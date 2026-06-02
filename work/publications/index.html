@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Local Voice Assistant Publications</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        color: #17202a;
+        background: #f6f7f9;
+      }
+
+      body {
+        margin: 0;
+      }
+
+      main {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 36px 24px 56px;
+      }
+
+      header {
+        margin-bottom: 28px;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: clamp(2rem, 5vw, 3.25rem);
+        line-height: 1;
+      }
+
+      .lede {
+        max-width: 720px;
+        margin: 0;
+        color: #4f5d6b;
+        font-size: 1.05rem;
+        line-height: 1.55;
+      }
+
+      .notice {
+        max-width: 760px;
+        margin: 18px 0 0;
+        border-left: 4px solid #0f5f8c;
+        background: #eef7fb;
+        padding: 12px 14px;
+        color: #23313f;
+        line-height: 1.55;
+      }
+
+      .grid {
+        display: grid;
+        gap: 16px;
+      }
+
+      article,
+      .handoff,
+      .feature {
+        border: 1px solid #d7dce2;
+        border-radius: 8px;
+        background: #ffffff;
+        padding: 22px;
+      }
+
+      .feature {
+        border-color: #b9d5e4;
+        background: #fbfdfe;
+        margin-bottom: 16px;
+      }
+
+      .meta {
+        margin: 0 0 10px;
+        color: #647181;
+        font-size: 0.9rem;
+        font-weight: 600;
+        text-transform: uppercase;
+      }
+
+      h2 {
+        margin: 0 0 10px;
+        font-size: 1.45rem;
+      }
+
+      h3 {
+        margin: 24px 0 8px;
+        font-size: 1.05rem;
+      }
+
+      p,
+      li {
+        line-height: 1.6;
+      }
+
+      ul {
+        padding-left: 22px;
+      }
+
+      a {
+        color: #0f5f8c;
+        font-weight: 700;
+      }
+
+      .links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 16px;
+      }
+
+      .links a {
+        border: 1px solid #c9d4df;
+        border-radius: 6px;
+        padding: 8px 10px;
+        background: #f9fbfc;
+        text-decoration: none;
+      }
+
+      .source-panel {
+        margin: 0 0 18px;
+        border: 1px solid #b8cbd7;
+        border-radius: 8px;
+        background: #ffffff;
+        padding: 18px 20px;
+      }
+
+      .warning {
+        border-color: #d7b25f;
+        background: #fffaf0;
+      }
+
+      code {
+        border-radius: 4px;
+        background: #eef2f5;
+        padding: 2px 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Publications</h1>
+        <p class="lede">
+          Ready website publication materials for the Local Voice Assistant
+          experiment, prepared for the Dani En Remoto website.
+        </p>
+        <p class="notice">
+          This is an experiment, not a real product. We are sharing what we are
+          testing, what works, what breaks, and what we learn.
+        </p>
+        <p class="notice">
+          Workflow note: these are source materials for the managed Dani En
+          Remoto website, not the publication destination. The next step is
+          Webmaster implementation in the real site repo.
+        </p>
+      </header>
+
+      <section class="grid" aria-label="Publication materials">
+        <section class="source-panel" aria-label="Project source">
+          <p class="meta">Source code</p>
+          <h2>Download the Local Voice Assistant Project</h2>
+          <p>
+            The public GitHub repository contains the app source, tests, and
+            publication materials for this experiment.
+          </p>
+          <div class="links">
+            <a href="https://github.com/danox46/local-voice-assistant">Open GitHub repo</a>
+            <a href="https://github.com/danox46/local-voice-assistant/archive/refs/heads/main.zip">Download ZIP</a>
+          </div>
+        </section>
+
+        <section class="feature">
+          <p class="meta">Dani En Remoto experiment</p>
+          <h2>Voice Commands to Codex, Tested in a Real Project Folder</h2>
+          <p>
+            We are testing a local voice workflow for working with an AI coding
+            assistant. The goal is simple: speak an instruction, let Codex work
+            inside the active project folder, and see whether the back-and-forth
+            feels practical enough for real creative and technical work.
+          </p>
+          <p>
+            This is not a product launch. It is a Dani En Remoto experiment from
+            the project table, shared publicly so the process, rough edges, and
+            lessons are visible.
+          </p>
+          <h3>What we are testing</h3>
+          <ul>
+            <li>Whether dictated instructions are clear enough for real project work.</li>
+            <li>How well the assistant turns conversational direction into concrete file changes.</li>
+            <li>How much confirmation is needed before editing files.</li>
+            <li>Whether short spoken summaries are enough after the work is done.</li>
+            <li>Where voice control helps compared with typing, and where it adds ambiguity.</li>
+          </ul>
+          <h3>What this is not</h3>
+          <ul>
+            <li>Not a real product or public SaaS launch.</li>
+            <li>Not a replacement for careful human review.</li>
+            <li>Not a finished automation platform.</li>
+          </ul>
+          <div class="links">
+            <a href="danny-remoto-experiment-publish-pack.md">Open full Dani En Remoto publish pack</a>
+          </div>
+        </section>
+
+        <article>
+          <p class="meta">Ready for website - June 2, 2026</p>
+          <h2>Building a Local Voice Assistant That Can Work With Codex</h2>
+          <p>
+            A first look at the local voice wrapper, the model flow behind it,
+            and the response-sanitizing layer that keeps spoken answers
+            practical.
+          </p>
+          <h3>What it covers</h3>
+          <ul>
+            <li>Dictated instructions flowing into the assistant workflow.</li>
+            <li>Project work staying tied to the active local folder.</li>
+            <li>Speech-friendly summaries that avoid reading long paths aloud.</li>
+            <li>A near-term plan for turning the prototype into a practical remote-work assistant.</li>
+          </ul>
+          <div class="links">
+            <a href="local-voice-assistant-first-post.md">Open article draft</a>
+          </div>
+        </article>
+
+        <section class="handoff">
+          <p class="meta">Website handoff</p>
+          <h2>Publication Handoff</h2>
+          <p>
+          Destination: Dani En Remoto website. Recommended page type:
+            blog post or publication article in the "Proyectos en la mesa"
+            stream.
+          </p>
+          <p>
+            Suggested slug:
+            <code>local-voice-assistant-codex-workflow</code>
+          </p>
+          <p>
+            Suggested excerpt: We are building a local voice assistant that lets
+            a user talk naturally to a coding agent while it works inside a real
+            project folder.
+          </p>
+          <div class="links">
+            <a href="website-publication-handoff.md">Open handoff note</a>
+          </div>
+        </section>
+
+        <section class="handoff warning">
+          <p class="meta">Process diagnosis</p>
+          <h2>Why This Is Not Published Yet</h2>
+          <p>
+            The content is ready as source material, but the Dani En Remoto
+            website source repo is not present in this workspace. This package
+            should feed the Webmaster workflow for the real site before any
+            campaign or social staging happens.
+          </p>
+          <div class="links">
+            <a href="process-diagnosis.md">Open process diagnosis</a>
+          </div>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

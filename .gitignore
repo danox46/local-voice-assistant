@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.wrangler/
+work/audio/
+work/codex-runs/
+.env
+.env.local
+.vite/
+coverage/
+*.log
