@@ -11,6 +11,7 @@ A local push-to-talk voice wrapper that can run in three modes:
 - Publications page: https://local-voice-assistant-publications.pages.dev/
 - Source code and downloads: https://github.com/danox46/local-voice-assistant
 - Download ZIP: https://github.com/danox46/local-voice-assistant/archive/refs/heads/main.zip
+- Process note: `work/publications/multi-session-voice-workflow.md`
 
 ## Setup
 
@@ -81,3 +82,7 @@ Copy `.env.example` to `.env`, add `OPENAI_API_KEY`, restart the server, and cho
 ## Extension Points
 
 The first listener is `push-to-talk`. Wake phrase, always-listen, and Home Assistant integration are reserved behind typed interfaces in `src/server/types.ts` and `src/server/listeners.ts`.
+
+## Multi-Session Direction
+
+The next process improvement is background session orchestration. The main voice session should remain available for planning while bounded Codex sessions run in the background and return consistent done, blocked, failed, or still-running reports.
