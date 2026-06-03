@@ -63,7 +63,9 @@ Planner conversation is persisted in `work/planner-session.json`, which is inten
 
 Planning questions are returned as a `plannerPrompt` payload from `POST /api/text-turn` or `POST /api/audio-text-turn`. The client renders the payload as a planning panel and keeps normal voice/text entry available for answers.
 
-The session command router handles narrow operational phrases such as focusing the latest worker, inspecting the current worker, continuing the focused session, cancelling a current worker, and archiving completed workers. Unrecognized or conversational turns fall through to the main planner so brainstorming is not swallowed by command matching.
+The session command router handles narrow operational phrases such as switching Codex plan/execute mode, reporting the current mode, focusing the latest worker, inspecting the current worker, continuing the focused session, cancelling a current worker, and archiving completed workers. Unrecognized or conversational turns fall through to the main planner so brainstorming is not swallowed by command matching.
+
+Command responses can return updated `settings`; the client applies those settings after the turn so voice commands and the visible settings drawer remain in sync.
 
 ## Session Supervision
 

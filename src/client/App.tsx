@@ -232,6 +232,7 @@ export function App() {
   const wakeIsArmed = wakeEnabled && canUseWakePhrase && wakeStatus === "listening";
 
   function applyTextTurn(turn: TextTurnResponse) {
+    setSettings(turn.settings);
     setSpokenSummary(turn.spokenSummary);
     setPlannerPrompt(turn.plannerPrompt ?? null);
     setMessages((current) =>
@@ -688,6 +689,7 @@ export function App() {
       const nextUrl = audioUrlFromResponse(turn);
       if (audioUrl) URL.revokeObjectURL(audioUrl);
       setAudioUrl(nextUrl);
+      setSettings(turn.settings);
       setSpokenSummary(turn.spokenSummary);
       setPlannerPrompt(turn.plannerPrompt ?? null);
       setMessages((current) =>

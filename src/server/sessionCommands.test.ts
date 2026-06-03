@@ -138,9 +138,39 @@ describe("handleSessionCommand", () => {
     expect(sessions[0].focused).toBe(true);
   });
 
+  it("switches Codex workers into plan-only mode by voice", async () => {
+    const { handleSessionCommand } = await import("./sessionCommands");
+
+    const result = handleSessionCommand("Switch to plan mode", [], settings);
+
+    expect(result?.settings.codexMode).toBe("plan");
+    expect(result?.assistantMessage.content).toContain("plan-only mode");
+    expect(result?.spokenSummary).toContain("plan-only");
+  });
+
+  it("switches Codex workers back into execute mode by voice", async () => {
+    const { handleSessionCommand } = await import("./sessionCommands");
+    const planSettings = { ...settings, codexMode: "plan" as const };
+
+    const result = handleSessionCommand("Use execute mode so workers can make changes", [], planSettings);
+
+    expect(result?.settings.codexMode).toBe("execute");
+    expect(result?.assistantMessage.content).toContain("execute mode");
+  });
+
+  it("reports the current Codex worker mode", async () => {
+    const { handleSessionCommand } = await import("./sessionCommands");
+
+    const result = handleSessionCommand("What mode are we in?", [], settings);
+
+    expect(result?.assistantMessage.content).toContain("Current Codex mode");
+    expect(result?.spokenSummary).toContain("execute");
+  });
+
   it("returns undefined for ordinary conversational turns", async () => {
     const { handleSessionCommand } = await import("./sessionCommands");
 
     expect(handleSessionCommand("What do you think about the UI?", [], settings)).toBeUndefined();
+    expect(handleSessionCommand("Plan the next version of the UI", [], settings)).toBeUndefined();
   });
 });

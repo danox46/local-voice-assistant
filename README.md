@@ -132,6 +132,9 @@ The same controls are available by voice in Codex mode:
 - `continue the focused session`
 - `cancel the current worker`
 - `archive completed workers`
+- `switch to plan mode`
+- `use execute mode`
+- `what mode are we in`
 
 ## Architecture
 

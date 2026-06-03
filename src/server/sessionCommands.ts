@@ -64,6 +64,17 @@ function modeFromSettings(settings: AssistantSettings): BackgroundSessionMode {
   return settings.codexMode === "plan" ? "plan" : "execute";
 }
 
+function modeName(mode: AssistantSettings["codexMode"]) {
+  return mode === "plan" ? "plan-only" : "execute";
+}
+
+function modeSettings(settings: AssistantSettings, mode: AssistantSettings["codexMode"]) {
+  return {
+    ...settings,
+    codexMode: mode
+  };
+}
+
 function followUpPrompt(session: BackgroundSession, history: ConversationMessage[], transcript: string) {
   const recentContext = history
     .slice(-8)
@@ -96,6 +107,44 @@ export function handleSessionCommand(
   const original = transcript.trim();
   const clean = cleanTranscript(transcript);
   if (!clean) return undefined;
+
+  if (
+    /\b(what|which|current|show|tell me)\b/.test(clean) &&
+    /\b(mode|planning mode|execute mode|plan mode)\b/.test(clean)
+  ) {
+    return commandResponse({
+      transcript: original,
+      settings,
+      answer: `Current Codex mode: ${modeName(settings.codexMode)}.\n\nIn plan-only mode, workers inspect and plan without editing. In execute mode, workers may make bounded changes in the configured workspace.`,
+      spokenSummary: `Current Codex mode is ${modeName(settings.codexMode)}.`
+    });
+  }
+
+  if (
+    /\b(switch|change|set|use|enable|turn on)\b/.test(clean) &&
+    /\b(plan mode|planning mode|plan-only|plan only|read only|read-only)\b/.test(clean)
+  ) {
+    const nextSettings = modeSettings(settings, "plan");
+    return commandResponse({
+      transcript: original,
+      settings: nextSettings,
+      answer: "Switched Codex to plan-only mode.\n\nNew worker sessions will inspect, reason, and propose steps without editing files.",
+      spokenSummary: "Switched Codex to plan-only mode."
+    });
+  }
+
+  if (
+    /\b(switch|change|set|use|enable|turn on)\b/.test(clean) &&
+    /\b(execute mode|execution mode|make changes|edit files|write files)\b/.test(clean)
+  ) {
+    const nextSettings = modeSettings(settings, "execute");
+    return commandResponse({
+      transcript: original,
+      settings: nextSettings,
+      answer: "Switched Codex to execute mode.\n\nNew worker sessions may make bounded changes in the configured workspace.",
+      spokenSummary: "Switched Codex to execute mode."
+    });
+  }
 
   if (/\b(focus|select|switch to)\b/.test(clean) && /\b(latest|last|newest|recent)\b/.test(clean)) {
     const session = latestSession();
