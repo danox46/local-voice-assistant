@@ -100,6 +100,25 @@ export interface SessionInspection {
   inspectedAt: string;
 }
 
+export type ActivityEventKind =
+  | "mode"
+  | "worker"
+  | "inspection"
+  | "focus"
+  | "archive"
+  | "notification"
+  | "system";
+
+export interface ActivityEvent {
+  id: string;
+  kind: ActivityEventKind;
+  title: string;
+  detail: string;
+  createdAt: string;
+  sessionId?: string;
+  severity?: "info" | "success" | "warning" | "critical";
+}
+
 export interface BackgroundSession {
   id: string;
   title: string;

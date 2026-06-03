@@ -1,5 +1,6 @@
 import type {
   ApiErrorResponse,
+  ActivityEvent,
   AssistantSettings,
   BackgroundSession,
   BackgroundSessionMode,
@@ -130,6 +131,13 @@ export async function listSessions(): Promise<BackgroundSession[]> {
   if (!response.ok) throw new Error(await parseApiError(response));
   const body = (await response.json()) as { sessions: BackgroundSession[] };
   return body.sessions;
+}
+
+export async function listActivity(): Promise<ActivityEvent[]> {
+  const response = await fetch(`${API_BASE_URL}/api/activity`);
+  if (!response.ok) throw new Error(await parseApiError(response));
+  const body = (await response.json()) as { events: ActivityEvent[] };
+  return body.events;
 }
 
 export async function createSession(input: {

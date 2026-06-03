@@ -637,6 +637,73 @@ h2 {
   color: #65776e;
 }
 
+.activity-panel {
+  min-height: 0;
+}
+
+.activity-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.activity-item {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 11px 12px;
+  border: 1px solid #dce5d8;
+  border-left: 5px solid #8ca093;
+  border-radius: 8px;
+  background: #fbfdf8;
+}
+
+.activity-item.success {
+  border-left-color: #6f9e4f;
+}
+
+.activity-item.warning {
+  border-left-color: #c79b35;
+  background: #fffaf0;
+}
+
+.activity-item.critical {
+  border-left-color: #c4563e;
+  background: #fff8f5;
+}
+
+.activity-time {
+  color: #60736a;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.activity-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.activity-title-row strong {
+  color: #22342b;
+  font-size: 0.94rem;
+}
+
+.activity-title-row span {
+  color: #65776e;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.activity-item p {
+  margin: 4px 0 0;
+  color: #465950;
+  line-height: 1.4;
+}
+
 .audio-strip {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

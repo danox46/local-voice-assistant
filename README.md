@@ -13,6 +13,7 @@ Local Voice Assistant is a local web app for talking to a planning agent, keepin
 - Background worker sessions for Codex CLI tasks.
 - Voice-native worker commands for focusing, inspecting, continuing, cancelling, and archiving sessions.
 - Session supervision that separates stale work, user-needed blockers, and agent-actionable issues.
+- Activity timeline for mode changes, worker lifecycle events, inspections, and notifications.
 - Optional Gemini CLI and OpenAI cloud voice/transcription modes.
 
 ## Modes
@@ -124,6 +125,8 @@ Worker cards also support:
 - **Continue**: start a follow-up worker from the current report
 - **Archive**: hide completed or stopped sessions from the main dashboard
 - **Show archived**: bring archived sessions back into view
+
+The **Activity** panel keeps a recent timeline of command decisions and worker changes, including mode switches, focused workers, inspections, queued workers, completions, cancellations, and archived sessions.
 
 The same controls are available by voice in Codex mode:
 

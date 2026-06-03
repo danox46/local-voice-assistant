@@ -6,6 +6,7 @@ import type {
   ConversationMessage,
   TextTurnResponse
 } from "../shared/types";
+import { recordActivity } from "./activityFeed";
 import { spokenSummaryFrom } from "./plannerTurn";
 import {
   archiveBackgroundSession,
@@ -112,6 +113,12 @@ export function handleSessionCommand(
     /\b(what|which|current|show|tell me)\b/.test(clean) &&
     /\b(mode|planning mode|execute mode|plan mode)\b/.test(clean)
   ) {
+    recordActivity({
+      kind: "mode",
+      title: "Mode checked",
+      detail: `Current Codex mode is ${modeName(settings.codexMode)}.`,
+      severity: "info"
+    });
     return commandResponse({
       transcript: original,
       settings,
@@ -125,6 +132,12 @@ export function handleSessionCommand(
     /\b(plan mode|planning mode|plan-only|plan only|read only|read-only)\b/.test(clean)
   ) {
     const nextSettings = modeSettings(settings, "plan");
+    recordActivity({
+      kind: "mode",
+      title: "Plan mode enabled",
+      detail: "Voice command switched new Codex workers to plan-only mode.",
+      severity: "info"
+    });
     return commandResponse({
       transcript: original,
       settings: nextSettings,
@@ -138,6 +151,12 @@ export function handleSessionCommand(
     /\b(execute mode|execution mode|make changes|edit files|write files)\b/.test(clean)
   ) {
     const nextSettings = modeSettings(settings, "execute");
+    recordActivity({
+      kind: "mode",
+      title: "Execute mode enabled",
+      detail: "Voice command switched new Codex workers to execute mode.",
+      severity: "warning"
+    });
     return commandResponse({
       transcript: original,
       settings: nextSettings,
@@ -199,6 +218,13 @@ export function handleSessionCommand(
     ]
       .filter(Boolean)
       .join("\n");
+    recordActivity({
+      kind: "inspection",
+      title: inspection.issueFound ? "Inspection found an issue" : "Inspection clear",
+      detail: `${session.title}: ${inspection.summary}`,
+      sessionId: session.id,
+      severity: inspection.userNeeded ? "critical" : inspection.issueFound ? "warning" : "success"
+    });
     return commandResponse({
       transcript: original,
       settings,

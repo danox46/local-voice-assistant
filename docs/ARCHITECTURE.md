@@ -46,6 +46,7 @@ The Express server owns API keys and local CLI execution. It exposes:
 - `GET /api/sessions/:id`
 - `POST /api/sessions`
 - `POST /api/sessions/:id/cancel`
+- `GET /api/activity`
 
 ## Codex Planner Mode
 
@@ -83,6 +84,12 @@ Worker sessions can also be focused or archived:
 - `POST /api/sessions/:id/archive` hides a completed/stopped worker from the main dashboard.
 
 Focused session context is appended as hidden assistant context for future planner turns, so the visible transcript stays clean while follow-up voice commands can refer to "this worker" naturally.
+
+## Activity Feed
+
+`activityFeed.ts` keeps a capped in-memory list of recent command-center events. It records worker lifecycle changes, focus/archive actions, inspections, and Codex mode changes. The client polls `GET /api/activity` alongside worker sessions and renders the latest events as a compact timeline.
+
+The activity feed is operational visibility, not durable audit storage. Long-term transcripts and worker reports still live in planner/session files under `work/`.
 
 ## Generated State
 

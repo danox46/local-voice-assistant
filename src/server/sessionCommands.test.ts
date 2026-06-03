@@ -2,6 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AssistantSettings, BackgroundSession } from "../shared/types";
 
 const sessions: BackgroundSession[] = [];
+const recordActivity = vi.fn();
+
+vi.mock("./activityFeed", () => ({
+  recordActivity: (...args: unknown[]) => recordActivity(...args)
+}));
 
 vi.mock("./plannerTurn", () => ({
   spokenSummaryFrom: vi.fn((answer: string) => answer.split(/\s+/).slice(0, 12).join(" "))
@@ -146,6 +151,7 @@ describe("handleSessionCommand", () => {
     expect(result?.settings.codexMode).toBe("plan");
     expect(result?.assistantMessage.content).toContain("plan-only mode");
     expect(result?.spokenSummary).toContain("plan-only");
+    expect(recordActivity).toHaveBeenCalledWith(expect.objectContaining({ title: "Plan mode enabled" }));
   });
 
   it("switches Codex workers back into execute mode by voice", async () => {
@@ -165,6 +171,7 @@ describe("handleSessionCommand", () => {
 
     expect(result?.assistantMessage.content).toContain("Current Codex mode");
     expect(result?.spokenSummary).toContain("execute");
+    expect(recordActivity).toHaveBeenCalledWith(expect.objectContaining({ title: "Mode checked" }));
   });
 
   it("returns undefined for ordinary conversational turns", async () => {

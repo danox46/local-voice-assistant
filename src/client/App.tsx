@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import type {
+  ActivityEvent,
   AssistantSettings,
   BackgroundSession,
   ConversationMessage,
@@ -30,6 +31,7 @@ import {
   getHealth,
   getPlannerSession,
   inspectSession,
+  listActivity,
   listSessions,
   resetPlannerSession,
   sendAudioTextTurn,
@@ -89,6 +91,13 @@ function sessionSummary(session: BackgroundSession) {
 
 function sessionNeedsAttention(session: BackgroundSession) {
   return session.supervision.shouldNotify || session.supervision.level === "needs-user";
+}
+
+function activityTime(event: ActivityEvent) {
+  return new Date(event.createdAt).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 }
 
 export function splitSpeechIntoChunks(text: string, maxChunkLength = 180) {
@@ -166,6 +175,7 @@ export function App() {
   const [micLevel, setMicLevel] = useState(0);
   const [autoStopRemaining, setAutoStopRemaining] = useState(0);
   const [sessions, setSessions] = useState<BackgroundSession[]>([]);
+  const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
   const [wakeEnabled, setWakeEnabled] = useState(true);
   const [wakeStatus, setWakeStatus] = useState<"off" | "listening" | "heard" | "error">("off");
   const [plannerPrompt, setPlannerPrompt] = useState<PlannerPrompt | null>(null);
@@ -321,7 +331,7 @@ export function App() {
 
   async function refreshSessions() {
     try {
-      const nextSessions = await listSessions();
+      const [nextSessions, nextEvents] = await Promise.all([listSessions(), listActivity()]);
       const knownStatuses = knownSessionStatusesRef.current;
       const completedSession = nextSessions.find((session) => {
         const previousStatus = knownStatuses.get(session.id);
@@ -335,6 +345,7 @@ export function App() {
       );
       sessionsHydratedRef.current = true;
       setSessions(nextSessions);
+      setActivityEvents(nextEvents);
 
       if (completedSession) {
         const summary = [
@@ -1263,6 +1274,36 @@ export function App() {
           ) : (
             <p className="empty-sessions">
               No worker sessions yet. Ask for a concrete change and I will start one in the background.
+            </p>
+          )}
+        </section>
+
+        <section className="panel activity-panel">
+          <div className="panel-heading command-heading">
+            <Terminal size={18} />
+            <div>
+              <h2>Activity</h2>
+              <p>{activityEvents.length} recent command and worker events</p>
+            </div>
+          </div>
+          {activityEvents.length ? (
+            <div className="activity-list">
+              {activityEvents.slice(0, 12).map((event) => (
+                <article className={`activity-item ${event.severity ?? "info"}`} key={event.id}>
+                  <span className="activity-time">{activityTime(event)}</span>
+                  <div>
+                    <div className="activity-title-row">
+                      <strong>{event.title}</strong>
+                      <span>{event.kind}</span>
+                    </div>
+                    <p>{event.detail}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="empty-sessions">
+              No activity yet. Voice commands, worker changes, and inspections will appear here.
             </p>
           )}
         </section>

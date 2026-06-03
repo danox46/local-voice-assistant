@@ -31,6 +31,7 @@ describe("App", () => {
       integrations: []
     });
     vi.mocked(api.listSessions).mockResolvedValue([]);
+    vi.mocked(api.listActivity).mockResolvedValue([]);
     vi.mocked(api.cancelSession).mockResolvedValue({ cancelled: true });
     vi.mocked(api.getPlannerSession).mockResolvedValue({
       id: "main",
@@ -56,6 +57,7 @@ describe("App", () => {
     expect(screen.getByText("Transcript")).toBeInTheDocument();
     expect(screen.getByText("Full response")).toBeInTheDocument();
     expect(screen.getByText("Worker Sessions")).toBeInTheDocument();
+    expect(screen.getByText("Activity")).toBeInTheDocument();
     expect(screen.getByText("Spoken summary · AI-generated voice")).toBeInTheDocument();
     expect(screen.getByText('Wake on "tensoon"')).toBeInTheDocument();
   });

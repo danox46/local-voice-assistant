@@ -10,6 +10,7 @@ import {
   CodexCliAssistantResponder
 } from "./providers/codexCliAssistantResponder";
 import { GeminiCliAssistantResponder } from "./providers/geminiCliAssistantResponder";
+import { listActivityEvents, recordActivity } from "./activityFeed";
 import { GeminiCliTranscriber } from "./providers/geminiCliTranscriber";
 import { OpenAIAssistantResponder } from "./providers/openaiAssistantResponder";
 import { OpenAISpeechSynthesizer } from "./providers/openaiSpeechSynthesizer";
@@ -266,6 +267,10 @@ app.get("/api/sessions", (_req, res) => {
   res.json({ sessions: listBackgroundSessions() });
 });
 
+app.get("/api/activity", (_req, res) => {
+  res.json({ events: listActivityEvents() });
+});
+
 app.get("/api/sessions/:id", (req, res) => {
   const session = getBackgroundSession(req.params.id);
   if (!session) {
@@ -311,6 +316,15 @@ app.post("/api/sessions", (req, res) => {
 
 app.post("/api/sessions/:id/cancel", (req, res) => {
   const cancelled = cancelBackgroundSession(req.params.id);
+  if (cancelled) {
+    recordActivity({
+      kind: "worker",
+      title: "Cancel requested",
+      detail: "The user requested worker cancellation.",
+      sessionId: req.params.id,
+      severity: "warning"
+    });
+  }
   res.json({ cancelled });
 });
 

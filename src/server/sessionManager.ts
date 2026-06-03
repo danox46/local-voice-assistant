@@ -10,6 +10,7 @@ import type {
   SessionInspection,
   SessionSupervision
 } from "../shared/types";
+import { recordActivity } from "./activityFeed";
 import { config } from "./config";
 
 interface RunningSession {
@@ -312,6 +313,20 @@ function finishSession(id: string, patch: Partial<BackgroundSession>) {
   next.supervision = classifySessionSupervision(next);
   sessions.set(id, next);
   runningSessions.delete(id);
+  recordActivity({
+    kind: "worker",
+    title: `Worker ${next.status}`,
+    detail: `${next.title}: ${next.report.summary || next.error || "Session finished."}`,
+    sessionId: next.id,
+    severity:
+      next.status === "done"
+        ? "success"
+        : next.supervision.userNeeded
+          ? "critical"
+          : next.status === "failed" || next.status === "blocked"
+            ? "warning"
+            : "info"
+  });
   void writeReport(next).catch((error) => {
     console.error(`[${new Date().toISOString()}] session report write failed`, error);
   });
@@ -352,6 +367,13 @@ export function createBackgroundSession(input: CreateSessionInput) {
     report: emptyReport()
   };
   sessions.set(id, session);
+  recordActivity({
+    kind: "worker",
+    title: "Worker queued",
+    detail: `${session.title} started in ${session.mode} mode.`,
+    sessionId: session.id,
+    severity: "info"
+  });
   startSession(session);
   return sessions.get(id)!;
 }
@@ -487,6 +509,13 @@ export function focusBackgroundSession(id: string) {
   focusedSessionId = id;
   const focused = withSupervision(session);
   sessions.set(id, focused);
+  recordActivity({
+    kind: "focus",
+    title: "Focused worker",
+    detail: `${focused.title} is now the current worker context.`,
+    sessionId: focused.id,
+    severity: "info"
+  });
   return focused;
 }
 
@@ -499,5 +528,12 @@ export function archiveBackgroundSession(id: string) {
     archivedAt: new Date().toISOString()
   });
   sessions.set(id, archived);
+  recordActivity({
+    kind: "archive",
+    title: "Archived worker",
+    detail: `${archived.title} was hidden from the main worker list.`,
+    sessionId: archived.id,
+    severity: "info"
+  });
   return archived;
 }
