@@ -87,10 +87,10 @@ Focused session context is appended as hidden assistant context for future plann
 
 ## Activity Feed
 
-`activityFeed.ts` keeps a capped in-memory list of recent command-center events. It records worker lifecycle changes, focus/archive actions, inspections, and Codex mode changes. The client polls `GET /api/activity` alongside worker sessions and renders the latest events as a compact timeline.
+`activityFeed.ts` keeps a capped list of recent command-center events in `work/activity-events.json`. It records worker lifecycle changes, focus/archive actions, inspections, and Codex mode changes. The client polls `GET /api/activity` alongside worker sessions and renders the latest events as a compact timeline.
 
-The activity feed is operational visibility, not durable audit storage. Long-term transcripts and worker reports still live in planner/session files under `work/`.
+The activity feed survives server restarts, but it is still operational visibility rather than long-term audit storage. Full planner transcripts and worker reports live in separate files under `work/`.
 
 ## Generated State
 
-The `work/` folder is local runtime state. It may contain planner memory, temporary audio, Codex output, and session reports. It should not be committed.
+The `work/` folder is local runtime state. It may contain planner memory, activity events, temporary audio, Codex output, and session reports. It should not be committed.

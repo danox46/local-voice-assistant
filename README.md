@@ -94,6 +94,7 @@ Complete the browser login, then restart the app.
 The app writes runtime state to `work/`, including:
 
 - planner session memory
+- recent activity timeline
 - temporary audio files
 - Codex run output
 - background worker reports
