@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { App } from "./App";
+import { App, splitSpeechIntoChunks } from "./App";
 import * as api from "./api";
 
 vi.mock("./api");
@@ -30,6 +30,22 @@ describe("App", () => {
       listenerModes: [],
       integrations: []
     });
+    vi.mocked(api.listSessions).mockResolvedValue([]);
+    vi.mocked(api.cancelSession).mockResolvedValue({ cancelled: true });
+    vi.mocked(api.getPlannerSession).mockResolvedValue({
+      id: "main",
+      title: "Main planning session",
+      createdAt: "2026-06-02T00:00:00.000Z",
+      updatedAt: "2026-06-02T00:00:00.000Z",
+      messages: []
+    });
+    vi.mocked(api.resetPlannerSession).mockResolvedValue({
+      id: "main",
+      title: "Main planning session",
+      createdAt: "2026-06-02T00:00:00.000Z",
+      updatedAt: "2026-06-02T00:00:00.000Z",
+      messages: []
+    });
   });
 
   it("renders the primary voice assistant controls", async () => {
@@ -39,6 +55,7 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Start recording" })).toBeInTheDocument();
     expect(screen.getByText("Transcript")).toBeInTheDocument();
     expect(screen.getByText("Full response")).toBeInTheDocument();
+    expect(screen.getByText("Worker Sessions")).toBeInTheDocument();
     expect(screen.getByText("Spoken summary · AI-generated voice")).toBeInTheDocument();
   });
 
@@ -57,5 +74,16 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByText(/Codex CLI is not installed/)).toBeInTheDocument();
+  });
+
+  it("splits long spoken summaries into reliable playback chunks", () => {
+    const chunks = splitSpeechIntoChunks(
+      "This is the first sentence and it should stay together. This is the second sentence with useful context. This final sentence should also be heard.",
+      70
+    );
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.join(" ")).toContain("final sentence");
+    expect(chunks.every((chunk) => chunk.length <= 90)).toBe(true);
   });
 });

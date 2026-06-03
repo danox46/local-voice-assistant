@@ -1,7 +1,10 @@
 import type {
   ApiErrorResponse,
   AssistantSettings,
+  BackgroundSession,
+  BackgroundSessionMode,
   ConversationMessage,
+  PlannerSession,
   TextTurnResponse,
   VoiceTurnResponse
 } from "../shared/types";
@@ -32,6 +35,22 @@ export async function getHealth(): Promise<HealthResponse> {
   const response = await fetch(`${API_BASE_URL}/api/health`);
   if (!response.ok) throw new Error(await parseApiError(response));
   return (await response.json()) as HealthResponse;
+}
+
+export async function getPlannerSession(): Promise<PlannerSession> {
+  const response = await fetch(`${API_BASE_URL}/api/planner-session`);
+  if (!response.ok) throw new Error(await parseApiError(response));
+  const body = (await response.json()) as { session: PlannerSession };
+  return body.session;
+}
+
+export async function resetPlannerSession(): Promise<PlannerSession> {
+  const response = await fetch(`${API_BASE_URL}/api/planner-session/reset`, {
+    method: "POST"
+  });
+  if (!response.ok) throw new Error(await parseApiError(response));
+  const body = (await response.json()) as { session: PlannerSession };
+  return body.session;
 }
 
 export async function sendVoiceTurn(input: {
@@ -99,6 +118,38 @@ export async function sendTextTurn(input: {
 
 export async function cancelTurn() {
   const response = await fetch(`${API_BASE_URL}/api/cancel-turn`, {
+    method: "POST"
+  });
+  if (!response.ok) throw new Error(await parseApiError(response));
+  return (await response.json()) as { cancelled: boolean };
+}
+
+export async function listSessions(): Promise<BackgroundSession[]> {
+  const response = await fetch(`${API_BASE_URL}/api/sessions`);
+  if (!response.ok) throw new Error(await parseApiError(response));
+  const body = (await response.json()) as { sessions: BackgroundSession[] };
+  return body.sessions;
+}
+
+export async function createSession(input: {
+  title: string;
+  prompt: string;
+  mode: BackgroundSessionMode;
+}): Promise<BackgroundSession> {
+  const response = await fetch(`${API_BASE_URL}/api/sessions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+  if (!response.ok) throw new Error(await parseApiError(response));
+  const body = (await response.json()) as { session: BackgroundSession };
+  return body.session;
+}
+
+export async function cancelSession(id: string) {
+  const response = await fetch(`${API_BASE_URL}/api/sessions/${id}/cancel`, {
     method: "POST"
   });
   if (!response.ok) throw new Error(await parseApiError(response));

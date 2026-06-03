@@ -1,88 +1,130 @@
 # Local Voice Assistant
 
-A local push-to-talk voice wrapper that can run in three modes:
+Local Voice Assistant is a local web app for talking to a planning agent, keeping the full response visible, and hearing a concise spoken summary. It can also delegate concrete project work to background Codex CLI worker sessions.
 
-- **Codex CLI project mode**: browser speech recognition, Codex CLI in the workspace, and browser text-to-speech. This is the default.
-- **Gemini CLI subscription mode**: browser speech recognition, Gemini CLI signed in with your Google account, and browser text-to-speech.
-- **OpenAI cloud voice mode**: OpenAI transcription, assistant response, and generated voice audio.
+## What It Does
 
-## Published Materials
+- Push-to-talk browser UI with live microphone activity.
+- Browser speech recognition with typed fallback.
+- Server-side planner context that survives refreshes and failed turns.
+- Full response history on screen.
+- Short spoken summaries with a playback queue to prevent overlapping notifications.
+- Background worker sessions for Codex CLI tasks.
+- Optional Gemini CLI and OpenAI cloud voice/transcription modes.
 
-- Publications page: https://local-voice-assistant-publications.pages.dev/
-- Source code and downloads: https://github.com/danox46/local-voice-assistant
-- Download ZIP: https://github.com/danox46/local-voice-assistant/archive/refs/heads/main.zip
-- Process note: `work/publications/multi-session-voice-workflow.md`
+## Modes
 
-## Setup
+### Codex Command Center
 
-1. Run:
+Default mode. The main session focuses on conversation, planning, and coordination. Actionable requests can start background worker sessions that run Codex CLI in the configured workspace.
+
+Worker modes:
+
+- `execute`: workers may edit files in `CODEX_WORKDIR`
+- `plan`: workers inspect and plan without editing
+
+### Gemini CLI
+
+Uses browser speech recognition plus Gemini CLI for the assistant response. Run `npm run gemini:login` first.
+
+### OpenAI Cloud Voice
+
+Uses OpenAI cloud transcription, assistant response, and text-to-speech audio. Requires `OPENAI_API_KEY`.
+
+## Quick Start
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`.
+Open:
 
-## Codex CLI Project Mode
+```text
+http://127.0.0.1:5173
+```
 
-This is the default mode. It sends dictated instructions to `codex exec` in the configured workspace folder.
+The Express API runs on:
 
-Install and verify Codex CLI:
+```text
+http://127.0.0.1:8787
+```
+
+## Configuration
+
+Copy `.env.example` to `.env` when you need custom settings.
+
+```bash
+cp .env.example .env
+```
+
+Important values:
+
+- `PORT`: local API port, default `8787`
+- `OPENAI_API_KEY`: required for OpenAI cloud modes only
+- `CODEX_WORKDIR`: workspace folder for Codex CLI workers
+- `SUMMARY_WORDS`: target spoken-summary length
+- `TTS_VOICE`: OpenAI voice name for cloud voice mode
+
+## Codex CLI Setup
 
 ```bash
 npm install -g @openai/codex
 codex doctor
 ```
 
-The server uses `CODEX_WORKDIR` from `.env`, or defaults to the workspace root two folders above this app.
+Then start the app and choose Codex mode in Settings.
 
-Codex mode has two submodes:
-
-- **Execute changes**: runs `codex exec` with workspace-write sandboxing.
-- **Plan only**: runs `codex exec` with read-only sandboxing and instructs Codex to return a plan without editing files.
-
-While listening, the mic activity meter shows whether sound is reaching the browser. After words are detected, listening auto-stops after a short pause. Use **Stop and send** to finish early, or **Stop instruction** while Codex is thinking to cancel the active local Codex process.
-
-When the browser tab has focus, headset/media playback controls can trigger the app through the browser Media Session API: play starts listening, pause/stop finishes recording or cancels an active instruction. Support depends on the browser and headset driver.
-
-Codex CLI mode uses non-interactive `codex exec`, so full responses do not appear live in the Codex desktop app. The wrapper keeps full response history visible in the page instead.
-
-## Transcription Quality
-
-For Codex and Gemini backends, Settings includes a **Transcription** selector:
-
-- **Browser live speech**: uses the browser's built-in speech recognition. It is fast and shows partial words live. Choose the speech language in Settings for better coding dictation.
-- **Gemini audio transcription (experimental)**: records the actual audio and asks Gemini CLI to transcribe it. The Gemini CLI subscription endpoint may reject audio attachments with `INVALID_ARGUMENT`, so this is not the default.
-- **OpenAI cloud transcription**: uses OpenAI speech-to-text if `OPENAI_API_KEY` is configured.
-
-## Gemini Subscription Mode
-
-This mode avoids model API-key billing by routing the assistant response through Gemini CLI.
-
-Run this once in the app folder:
+## Gemini CLI Setup
 
 ```bash
 npm run gemini:login
 ```
 
-Choose **Sign in with Google** and complete the browser login. If your Google AI Pro or Ultra subscription grants Gemini CLI quota, the CLI uses that account path.
+Complete the browser login, then restart the app.
 
-## OpenAI Cloud Voice Mode
+## Local State
 
-Copy `.env.example` to `.env`, add `OPENAI_API_KEY`, restart the server, and choose **OpenAI cloud voice mode** in settings.
+The app writes runtime state to `work/`, including:
 
-## How It Works
+- planner session memory
+- temporary audio files
+- Codex run output
+- background worker reports
 
-- Codex mode uses browser speech recognition, `POST /api/text-turn`, Codex CLI, and browser speech synthesis.
-- Gemini mode uses browser speech recognition, `POST /api/text-turn`, Gemini CLI, and browser speech synthesis.
-- OpenAI mode records audio with `MediaRecorder`, calls `POST /api/voice-turn`, and returns MP3 audio as base64.
-- The app speaks only the short summary while keeping the full answer visible.
+`work/` is ignored by Git because it may contain private transcripts, project context, and local execution details.
 
-## Extension Points
+## Architecture
 
-The first listener is `push-to-talk`. Wake phrase, always-listen, and Home Assistant integration are reserved behind typed interfaces in `src/server/types.ts` and `src/server/listeners.ts`.
+Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the system flow and API boundaries.
 
-## Multi-Session Direction
+Short version:
 
-The next process improvement is background session orchestration. The main voice session should remain available for planning while bounded Codex sessions run in the background and return consistent done, blocked, failed, or still-running reports.
+```mermaid
+flowchart LR
+  A["Browser UI"] --> B["Express API"]
+  B --> C{"Backend"}
+  C --> D["Codex planner"]
+  C --> E["Gemini CLI"]
+  C --> F["OpenAI providers"]
+  D --> G["Background workers"]
+  B --> H["Spoken summary"]
+  H --> I["Playback queue"]
+```
+
+## Safety
+
+This is a local-first tool. Do not expose the API to the public internet. In Codex execute mode, workers may edit files inside `CODEX_WORKDIR`; use plan mode for read-only worker sessions.
+
+See [SECURITY.md](SECURITY.md).
+
+## Development Checks
+
+```bash
+npm test -- --run
+npm run build
+```
+
+## License
+
+MIT

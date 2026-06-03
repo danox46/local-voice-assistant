@@ -1,5 +1,6 @@
 import {
   Bot,
+  ClipboardList,
   Mic,
   MicOff,
   Pause,
@@ -12,12 +13,28 @@ import {
   VolumeX
 } from "lucide-react";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
-import type { AssistantSettings, ConversationMessage, VoiceTurnResponse } from "../shared/types";
-import { cancelTurn, getHealth, sendAudioTextTurn, sendTextTurn, sendVoiceTurn } from "./api";
+import type {
+  AssistantSettings,
+  BackgroundSession,
+  ConversationMessage,
+  VoiceTurnResponse
+} from "../shared/types";
+import {
+  cancelSession,
+  cancelTurn,
+  createSession,
+  getHealth,
+  getPlannerSession,
+  listSessions,
+  resetPlannerSession,
+  sendAudioTextTurn,
+  sendTextTurn,
+  sendVoiceTurn
+} from "./api";
 import { MicActivityMonitor, PushToTalkRecorder, PushToTalkSpeechRecognizer } from "./recorder";
 
 type UiState = "loading" | "idle" | "recording" | "thinking" | "speaking" | "error";
-const AUTO_STOP_AFTER_MS = 1800;
+const AUTO_STOP_AFTER_MS = 3500;
 
 const fallbackSettings: AssistantSettings = {
   backend: "codex-cli",
@@ -48,6 +65,67 @@ function statusCopy(state: UiState) {
   return "Ready";
 }
 
+function sessionStatusCopy(session: BackgroundSession) {
+  if (session.status === "queued") return "Queued";
+  if (session.status === "running") return "Running";
+  if (session.status === "done") return "Done";
+  if (session.status === "blocked") return "Blocked";
+  if (session.status === "failed") return "Failed";
+  return "Cancelled";
+}
+
+function sessionSummary(session: BackgroundSession) {
+  return (
+    session.report.summary ||
+    (session.status === "running" ? "Worker is still running." : "No summary yet.")
+  );
+}
+
+export function splitSpeechIntoChunks(text: string, maxChunkLength = 180) {
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (!clean) return [];
+
+  const sentences = clean.match(/[^.!?]+[.!?]+|[^.!?]+$/g)?.map((sentence) => sentence.trim()) ?? [
+    clean
+  ];
+  const chunks: string[] = [];
+  let current = "";
+
+  for (const sentence of sentences) {
+    if (!sentence) continue;
+    if (sentence.length > maxChunkLength) {
+      if (current) {
+        chunks.push(current);
+        current = "";
+      }
+      const words = sentence.split(/\s+/);
+      let phrase = "";
+      for (const word of words) {
+        const nextPhrase = phrase ? `${phrase} ${word}` : word;
+        if (nextPhrase.length > maxChunkLength && phrase) {
+          chunks.push(phrase);
+          phrase = word;
+        } else {
+          phrase = nextPhrase;
+        }
+      }
+      if (phrase) chunks.push(phrase);
+      continue;
+    }
+
+    const next = current ? `${current} ${sentence}` : sentence;
+    if (next.length > maxChunkLength && current) {
+      chunks.push(current);
+      current = sentence;
+    } else {
+      current = next;
+    }
+  }
+
+  if (current) chunks.push(current);
+  return chunks;
+}
+
 export function App() {
   const [uiState, setUiState] = useState<UiState>("loading");
   const [settings, setSettings] = useState<AssistantSettings>(fallbackSettings);
@@ -65,6 +143,7 @@ export function App() {
   const [volume, setVolume] = useState(0.9);
   const [micLevel, setMicLevel] = useState(0);
   const [autoStopRemaining, setAutoStopRemaining] = useState(0);
+  const [sessions, setSessions] = useState<BackgroundSession[]>([]);
 
   const recorderRef = useRef(new PushToTalkRecorder());
   const recognizerRef = useRef<PushToTalkSpeechRecognizer | null>(null);
@@ -75,6 +154,14 @@ export function App() {
   const heardAudioRef = useRef(false);
   const lastUsefulSoundAtRef = useRef(0);
   const speechUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const speechQueueRef = useRef<string[]>([]);
+  const speechActiveRef = useRef(false);
+  const speechTokenRef = useRef(0);
+  const speechTimeoutRef = useRef<number | null>(null);
+  const mutedRef = useRef(muted);
+  const volumeRef = useRef(volume);
+  const knownSessionStatusesRef = useRef<Map<string, BackgroundSession["status"]>>(new Map());
+  const sessionsHydratedRef = useRef(false);
 
   const lastUserMessage = useMemo(
     () => [...messages].reverse().find((message) => message.role === "user"),
@@ -101,33 +188,127 @@ export function App() {
     settings.backend === "openai" ||
     ((settings.backend === "codex-cli" || settings.backend === "gemini-cli") &&
       settings.transcriptionMode !== "browser");
+  const runningSessions = sessions.filter(
+    (session) => session.status === "queued" || session.status === "running"
+  );
+  const attentionSessions = sessions.filter(
+    (session) => session.status === "blocked" || session.status === "failed"
+  );
+  const completedSessions = sessions.filter((session) => session.status === "done");
 
-  function speakBrowserSummary(summary: string) {
+  async function refreshSessions() {
+    try {
+      const nextSessions = await listSessions();
+      const knownStatuses = knownSessionStatusesRef.current;
+      const completedSession = nextSessions.find((session) => {
+        const previousStatus = knownStatuses.get(session.id);
+        const wasActive = previousStatus === "queued" || previousStatus === "running";
+        const nowNeedsReport =
+          session.status === "done" || session.status === "blocked" || session.status === "failed";
+        return sessionsHydratedRef.current && wasActive && nowNeedsReport;
+      });
+
+      knownSessionStatusesRef.current = new Map(
+        nextSessions.map((session) => [session.id, session.status])
+      );
+      sessionsHydratedRef.current = true;
+      setSessions(nextSessions);
+
+      if (completedSession) {
+        const summary = [
+          `Worker update: ${completedSession.title} is ${sessionStatusCopy(completedSession).toLowerCase()}.`,
+          sessionSummary(completedSession),
+          completedSession.report.blockers &&
+          completedSession.report.blockers !== "None reported."
+            ? `Blocker: ${completedSession.report.blockers}`
+            : "",
+          completedSession.report.next ? `Next: ${completedSession.report.next}` : ""
+        ]
+          .filter(Boolean)
+          .join(" ");
+        setSpokenSummary(summary);
+        enqueueBrowserSummary(summary);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load worker sessions.");
+    }
+  }
+
+  function playNextBrowserSummary() {
+    if (speechActiveRef.current) return;
+    const nextSummary = speechQueueRef.current.shift();
+    if (!nextSummary) {
+      setUiState((current) => (current === "speaking" ? "idle" : current));
+      return;
+    }
+
+    const token = ++speechTokenRef.current;
+    speechActiveRef.current = true;
     setUiState("speaking");
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(summary);
+    const utterance = new SpeechSynthesisUtterance(nextSummary);
     speechUtteranceRef.current = utterance;
-    utterance.volume = muted ? 0 : volume;
+    utterance.volume = mutedRef.current ? 0 : volumeRef.current;
     utterance.rate = 0.98;
-    utterance.onend = () => {
+    const finish = () => {
+      if (token !== speechTokenRef.current) return;
+      if (speechTimeoutRef.current) {
+        window.clearTimeout(speechTimeoutRef.current);
+        speechTimeoutRef.current = null;
+      }
       speechUtteranceRef.current = null;
-      setUiState("idle");
+      speechActiveRef.current = false;
+      playNextBrowserSummary();
     };
-    utterance.onerror = () => {
-      speechUtteranceRef.current = null;
-      setUiState("idle");
-    };
+    utterance.onend = finish;
+    utterance.onerror = finish;
     window.speechSynthesis.speak(utterance);
+    const estimatedMs = Math.max(4500, nextSummary.split(/\s+/).length * 650);
+    speechTimeoutRef.current = window.setTimeout(finish, estimatedMs);
+  }
+
+  function enqueueBrowserSummary(summary: string, options: { replace?: boolean } = {}) {
+    const cleanSummary = summary.trim();
+    if (!cleanSummary || mutedRef.current) return;
+
+    if (options.replace) {
+      speechQueueRef.current = [];
+      speechActiveRef.current = false;
+      speechUtteranceRef.current = null;
+      speechTokenRef.current += 1;
+      window.speechSynthesis.cancel();
+    }
+
+    speechQueueRef.current.push(...splitSpeechIntoChunks(cleanSummary));
+    playNextBrowserSummary();
+  }
+
+  function clearBrowserPlaybackQueue() {
+    speechQueueRef.current = [];
+    speechActiveRef.current = false;
+    speechUtteranceRef.current = null;
+    speechTokenRef.current += 1;
+    if (speechTimeoutRef.current) {
+      window.clearTimeout(speechTimeoutRef.current);
+      speechTimeoutRef.current = null;
+    }
+    window.speechSynthesis.cancel();
+    setUiState((current) => (current === "speaking" ? "idle" : current));
   }
 
   useEffect(() => {
     getHealth()
-      .then((health) => {
+      .then(async (health) => {
         setSettings(health.settings);
         setHasOpenAiKey(health.hasOpenAiKey);
         setHasGeminiCli(health.hasGeminiCli);
         setHasCodexCli(health.hasCodexCli);
+        const plannerSession = await getPlannerSession();
+        setMessages(plannerSession.messages);
+        if (plannerSession.lastError) {
+          setError(plannerSession.lastError);
+        }
         setUiState("idle");
+        void refreshSessions();
         if (!health.hasCodexCli) {
           setError("Codex CLI is not installed. Run npm install -g @openai/codex, then restart the server.");
         }
@@ -139,8 +320,21 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    const interval = window.setInterval(() => {
+      void refreshSessions();
+    }, 4000);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
     if (audioRef.current) {
       audioRef.current.volume = muted ? 0 : volume;
+    }
+    mutedRef.current = muted;
+    volumeRef.current = volume;
+    if (muted) {
+      clearBrowserPlaybackQueue();
     }
   }, [muted, volume, audioUrl]);
 
@@ -292,10 +486,13 @@ export function App() {
         if (audioUrl) URL.revokeObjectURL(audioUrl);
         setAudioUrl("");
         setSpokenSummary(turn.spokenSummary);
-        setMessages((current) => [...current, turn.userMessage, turn.assistantMessage]);
+        setMessages((current) =>
+          turn.plannerSession?.messages ?? [...current, turn.userMessage, turn.assistantMessage]
+        );
+        void refreshSessions();
 
         if (!muted) {
-          speakBrowserSummary(turn.spokenSummary);
+          enqueueBrowserSummary(turn.spokenSummary);
         } else {
           setUiState("idle");
         }
@@ -320,10 +517,13 @@ export function App() {
         if (audioUrl) URL.revokeObjectURL(audioUrl);
         setAudioUrl("");
         setSpokenSummary(turn.spokenSummary);
-        setMessages((current) => [...current, turn.userMessage, turn.assistantMessage]);
+        setMessages((current) =>
+          turn.plannerSession?.messages ?? [...current, turn.userMessage, turn.assistantMessage]
+        );
+        void refreshSessions();
 
         if (!muted) {
-          speakBrowserSummary(turn.spokenSummary);
+          enqueueBrowserSummary(turn.spokenSummary);
         } else {
           setUiState("idle");
         }
@@ -340,7 +540,10 @@ export function App() {
       if (audioUrl) URL.revokeObjectURL(audioUrl);
       setAudioUrl(nextUrl);
       setSpokenSummary(turn.spokenSummary);
-      setMessages((current) => [...current, turn.userMessage, turn.assistantMessage]);
+      setMessages((current) =>
+        turn.plannerSession?.messages ?? [...current, turn.userMessage, turn.assistantMessage]
+      );
+      void refreshSessions();
 
       if (!muted) {
         setUiState("speaking");
@@ -387,10 +590,13 @@ export function App() {
       setTypedPrompt("");
       setLiveTranscript("");
       setSpokenSummary(turn.spokenSummary);
-      setMessages((current) => [...current, turn.userMessage, turn.assistantMessage]);
+      setMessages((current) =>
+        turn.plannerSession?.messages ?? [...current, turn.userMessage, turn.assistantMessage]
+      );
+      void refreshSessions();
 
       if (!muted) {
-        speakBrowserSummary(turn.spokenSummary);
+        enqueueBrowserSummary(turn.spokenSummary);
       } else {
         setUiState("idle");
       }
@@ -405,8 +611,7 @@ export function App() {
     activeTurnAbortRef.current?.abort();
     activeTurnAbortRef.current = null;
     micMonitorRef.current.stop();
-    window.speechSynthesis.cancel();
-    speechUtteranceRef.current = null;
+    clearBrowserPlaybackQueue();
     setMicLevel(0);
     setAutoStopRemaining(0);
     stoppingRef.current = false;
@@ -421,7 +626,7 @@ export function App() {
 
   function replayAudio() {
     if ((settings.backend === "gemini-cli" || settings.backend === "codex-cli") && spokenSummary) {
-      speakBrowserSummary(spokenSummary);
+      enqueueBrowserSummary(spokenSummary, { replace: true });
       return;
     }
     if (!audioRef.current) return;
@@ -432,9 +637,7 @@ export function App() {
 
   function stopAudio() {
     if (settings.backend === "gemini-cli" || settings.backend === "codex-cli") {
-      window.speechSynthesis.cancel();
-      speechUtteranceRef.current = null;
-      setUiState("idle");
+      clearBrowserPlaybackQueue();
       return;
     }
     if (!audioRef.current) return;
@@ -443,10 +646,67 @@ export function App() {
     setUiState("idle");
   }
 
-  function newChat() {
-    setMessages([]);
+  async function stopSession(session: BackgroundSession) {
+    try {
+      await cancelSession(session.id);
+      await refreshSessions();
+      setSpokenSummary(`${session.title} was cancelled.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not cancel the worker.");
+    }
+  }
+
+  function speakSession(session: BackgroundSession) {
+    const summary = [
+      `${session.title} is ${sessionStatusCopy(session).toLowerCase()}.`,
+      sessionSummary(session),
+      session.report.blockers && session.report.blockers !== "None reported."
+        ? `Blocker: ${session.report.blockers}`
+        : "",
+      session.report.next ? `Next: ${session.report.next}` : ""
+    ]
+      .filter(Boolean)
+      .join(" ");
+    setSpokenSummary(summary);
+    enqueueBrowserSummary(summary);
+  }
+
+  async function continueSession(session: BackgroundSession) {
+    const nextPrompt = [
+      `Continue from worker "${session.title}".`,
+      `Previous status: ${session.status}.`,
+      `Summary: ${session.report.summary}`,
+      `Changed: ${session.report.changed}`,
+      `Verified: ${session.report.verified}`,
+      `Blockers: ${session.report.blockers}`,
+      `Next step: ${session.report.next || "Choose the best next step and proceed."}`
+    ].join("\n");
+
+    try {
+      await createSession({
+        title: `Continue ${session.title}`,
+        prompt: nextPrompt,
+        mode: settings.codexMode
+      });
+      await refreshSessions();
+      const summary = `Started a follow-up worker for ${session.title}.`;
+      setSpokenSummary(summary);
+      enqueueBrowserSummary(summary);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start the follow-up worker.");
+    }
+  }
+
+  async function newChat() {
+    try {
+      const plannerSession = await resetPlannerSession();
+      setMessages(plannerSession.messages);
+      setError("");
+    } catch (err) {
+      setMessages([]);
+      setError(err instanceof Error ? err.message : "Could not reset planner session.");
+    }
     setSpokenSummary("");
-    setError("");
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioUrl("");
     setLiveTranscript("");
@@ -455,8 +715,7 @@ export function App() {
     stoppingRef.current = false;
     activeTurnAbortRef.current?.abort();
     activeTurnAbortRef.current = null;
-    window.speechSynthesis.cancel();
-    speechUtteranceRef.current = null;
+    clearBrowserPlaybackQueue();
     micMonitorRef.current.stop();
     setUiState("idle");
   }
@@ -489,7 +748,7 @@ export function App() {
         <header className="topbar">
           <div>
             <p className="eyebrow">Local Voice Assistant</p>
-            <h1>Talk, then hear the short version.</h1>
+            <h1>Plan by voice. Delegate the work.</h1>
           </div>
           <div className="toolbar">
             <button className="icon-button" onClick={newChat} title="New chat" type="button">
@@ -545,8 +804,8 @@ export function App() {
                 ? `${backendLabel} is working on your instruction.`
                 : settings.backend === "codex-cli"
                   ? usesBrowserSpeech
-                    ? "Press to dictate a project change with browser speech."
-                    : "Press to dictate a project change with higher-quality audio transcription."
+                    ? "Press to talk with the planning agent. Actionable work becomes background workers."
+                    : "Press to talk with the planning agent using recorded audio transcription."
                   : settings.backend === "gemini-cli"
                     ? usesBrowserSpeech
                       ? "Press to speak. Uses Gemini CLI plus browser voice."
@@ -588,8 +847,8 @@ export function App() {
         ) : null}
         {settings.backend === "codex-cli" && !messages.length ? (
           <div className="setup-note">
-            Codex mode sends dictated instructions to <code>codex exec</code> in the workspace.
-            It can edit files, so speak project-change requests deliberately.
+            Codex mode now acts as a planning agent. It keeps the main conversation open and hands
+            concrete tasks to background workers in the workspace.
           </div>
         ) : null}
         {settings.backend === "gemini-cli" && !messages.length ? (
@@ -663,6 +922,65 @@ export function App() {
             )}
           </section>
         </div>
+
+        <section className="panel command-center">
+          <div className="panel-heading command-heading">
+            <ClipboardList size={18} />
+            <div>
+              <h2>Worker Sessions</h2>
+              <p>
+                {runningSessions.length} running · {attentionSessions.length} need attention ·{" "}
+                {completedSessions.length} done
+              </p>
+            </div>
+          </div>
+
+          {sessions.length ? (
+            <div className="session-grid">
+              {sessions.map((session) => (
+                <article className={`session-card ${session.status}`} key={session.id}>
+                  <div className="session-card-top">
+                    <div>
+                      <span className="session-status">{sessionStatusCopy(session)}</span>
+                      <h3>{session.title}</h3>
+                    </div>
+                    <span className="session-mode">{session.mode}</span>
+                  </div>
+                  <p>{sessionSummary(session)}</p>
+                  {session.report.blockers && session.report.blockers !== "None reported." ? (
+                    <p className="session-blocker">{session.report.blockers}</p>
+                  ) : null}
+                  {session.report.next ? <p className="session-next">{session.report.next}</p> : null}
+                  <div className="session-actions">
+                    <button className="small-button" type="button" onClick={() => speakSession(session)}>
+                      Read
+                    </button>
+                    <button
+                      className="small-button"
+                      disabled={session.status === "queued" || session.status === "running"}
+                      type="button"
+                      onClick={() => void continueSession(session)}
+                    >
+                      Continue
+                    </button>
+                    <button
+                      className="small-button danger"
+                      disabled={session.status !== "queued" && session.status !== "running"}
+                      type="button"
+                      onClick={() => void stopSession(session)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="empty-sessions">
+              No worker sessions yet. Ask for a concrete change and I will start one in the background.
+            </p>
+          )}
+        </section>
 
         <section className="audio-strip">
           <div>

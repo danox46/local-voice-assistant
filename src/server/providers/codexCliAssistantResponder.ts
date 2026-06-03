@@ -113,11 +113,9 @@ function extractCodexAnswer(stdout: string) {
   return lines.find((line) => !line.startsWith("20") && !line.includes("WARN")) ?? stdout.trim();
 }
 
-function summarizeForSpeech(text: string, wordLimit: number) {
+export function summarizeForSpeech(text: string, _wordLimit: number) {
   const clean = sanitizeAssistantResponseForAudio(text).replace(/\s+/g, " ").trim();
-  const words = clean.split(" ");
-  if (words.length <= wordLimit) return clean;
-  return `${words.slice(0, wordLimit).join(" ")}...`;
+  return clean;
 }
 
 export class CodexCliAssistantResponder implements AssistantResponder {
@@ -127,7 +125,7 @@ export class CodexCliAssistantResponder implements AssistantResponder {
       "Use the user's dictated instruction to help with the project in this working directory.",
       settings.codexMode === "plan"
         ? "PLAN MODE: do not edit files, run write commands, or mutate project state. Return a complete but concise implementation plan only."
-        : "EXECUTE MODE: you may edit files as needed. In the final response, give a complete 2-5 sentence summary. If you changed files, say what changed and what you verified. If you ran commands, include the key result instead of only saying that the command ran.",
+        : "EXECUTE MODE: you may edit files as needed. In the final response, give a complete 2-5 sentence summary. This whole final summary will be read out loud, so keep it compact but do not omit changed files, verification results, blockers, or the next action when relevant.",
       `Assistant style: ${settings.assistantStyle}`,
       "Recent voice conversation:",
       formatHistory(history) || "(none yet)",

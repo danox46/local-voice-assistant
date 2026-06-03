@@ -14,11 +14,25 @@ import { GeminiCliTranscriber } from "./providers/geminiCliTranscriber";
 import { OpenAIAssistantResponder } from "./providers/openaiAssistantResponder";
 import { OpenAISpeechSynthesizer } from "./providers/openaiSpeechSynthesizer";
 import { OpenAITranscriber } from "./providers/openaiTranscriber";
+import { handlePlannerTurn } from "./plannerTurn";
+import {
+  appendPlannerTurn,
+  getPlannerContextMessages,
+  getPlannerSession,
+  recordPlannerFailure,
+  resetPlannerSession
+} from "./plannerSessionStore";
 import { handleTextTurn } from "./textTurn";
 import { handleVoiceTurn } from "./voiceTurn";
 import { futureListenerModes, integrationBoundaries, pushToTalkListener } from "./listeners";
 import fs from "node:fs";
 import path from "node:path";
+import {
+  cancelBackgroundSession,
+  createBackgroundSession,
+  getBackgroundSession,
+  listBackgroundSessions
+} from "./sessionManager";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -33,6 +47,7 @@ const messageSchema = z.object({
   content: z.string(),
   createdAt: z.string()
 });
+const historySchema = z.array(messageSchema).default([]);
 
 const settingsSchema = z.object({
   backend: z.enum(["codex-cli", "gemini-cli", "openai"]),
@@ -47,6 +62,12 @@ const settingsSchema = z.object({
   ttsModel: z.string().min(1),
   voice: z.string().min(1),
   summaryWords: z.coerce.number().int().min(15).max(100)
+});
+
+const sessionCreateSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+  prompt: z.string().trim().min(8).max(8000),
+  mode: z.enum(["execute", "plan"]).default("execute")
 });
 
 function parseJsonField<T>(value: unknown, fallback: T): T {
@@ -138,13 +159,17 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.post("/api/text-turn", async (req, res) => {
+  let failedPlannerTranscript = "";
+  let shouldRecordPlannerFailure = false;
   try {
     const bodySchema = z.object({
       transcript: z.string(),
-      history: z.array(messageSchema).max(24).default([]),
+      history: historySchema,
       settings: settingsSchema
     });
     const body = bodySchema.parse(req.body);
+    failedPlannerTranscript = body.transcript;
+    shouldRecordPlannerFailure = body.settings.backend === "codex-cli";
 
     if (body.settings.backend === "openai" && !hasOpenAiKey()) {
       const error = apiError(
@@ -167,15 +192,30 @@ app.post("/api/text-turn", async (req, res) => {
     }
 
     const settings = normalizeSettings(body.settings);
-    const assistant = createAssistant(settings);
     console.log(
       `[${new Date().toISOString()}] text-turn backend=${settings.backend} codexMode=${settings.codexMode}`
     );
 
-    const result = await handleTextTurn(body.transcript, body.history, settings, assistant);
-    res.json(result);
+    const result =
+      settings.backend === "codex-cli"
+        ? await handlePlannerTurn(body.transcript, getPlannerContextMessages(), settings)
+        : await handleTextTurn(
+            body.transcript,
+            body.history.slice(-24),
+            settings,
+            createAssistant(settings)
+          );
+    const plannerSession =
+      settings.backend === "codex-cli"
+        ? appendPlannerTurn(result.userMessage, result.assistantMessage)
+        : undefined;
+    shouldRecordPlannerFailure = false;
+    res.json(plannerSession ? { ...result, plannerSession } : result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Something went wrong.";
+    if (shouldRecordPlannerFailure && failedPlannerTranscript.trim()) {
+      recordPlannerFailure(failedPlannerTranscript, message);
+    }
     logServerError("text-turn failed", error);
     res.status(500).json({
       error: {
@@ -191,6 +231,58 @@ app.post("/api/cancel-turn", (_req, res) => {
   res.json({ cancelled });
 });
 
+app.get("/api/sessions", (_req, res) => {
+  res.json({ sessions: listBackgroundSessions() });
+});
+
+app.get("/api/sessions/:id", (req, res) => {
+  const session = getBackgroundSession(req.params.id);
+  if (!session) {
+    res.status(404).json({ error: { code: "session_not_found", message: "Session not found." } });
+    return;
+  }
+  res.json({ session });
+});
+
+app.get("/api/planner-session", (_req, res) => {
+  res.json({ session: getPlannerSession() });
+});
+
+app.post("/api/planner-session/reset", (_req, res) => {
+  res.json({ session: resetPlannerSession() });
+});
+
+app.post("/api/sessions", (req, res) => {
+  try {
+    if (!hasCodexCli()) {
+      const error = apiError(
+        "missing_codex_cli",
+        "Codex CLI is not available on PATH. Install it with `npm install -g @openai/codex`, then restart the server.",
+        503
+      );
+      res.status(error.status).json(error.body);
+      return;
+    }
+    const body = sessionCreateSchema.parse(req.body);
+    const session = createBackgroundSession(body);
+    res.status(201).json({ session });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not start session.";
+    logServerError("session create failed", error);
+    res.status(400).json({
+      error: {
+        code: "session_create_failed",
+        message
+      }
+    });
+  }
+});
+
+app.post("/api/sessions/:id/cancel", (req, res) => {
+  const cancelled = cancelBackgroundSession(req.params.id);
+  res.json({ cancelled });
+});
+
 app.post("/api/audio-text-turn", upload.single("audio"), async (req, res) => {
   try {
     if (!req.file) {
@@ -201,7 +293,6 @@ app.post("/api/audio-text-turn", upload.single("audio"), async (req, res) => {
 
     const parsedHistory = z
       .array(messageSchema)
-      .max(24)
       .parse(parseJsonField(req.body.history, [])) as ConversationMessage[];
     const settings = normalizeSettings(
       settingsSchema.parse({
@@ -255,7 +346,19 @@ app.post("/api/audio-text-turn", upload.single("audio"), async (req, res) => {
       console.log(
         `[${new Date().toISOString()}] transcript chars=${transcript.length}; sending to ${settings.backend}`
       );
-      return handleTextTurn(transcript, parsedHistory, settings, createAssistant(settings));
+      if (settings.backend === "codex-cli") {
+        const plannerResult = await handlePlannerTurn(
+          transcript,
+          getPlannerContextMessages(),
+          settings
+        );
+        const plannerSession = appendPlannerTurn(
+          plannerResult.userMessage,
+          plannerResult.assistantMessage
+        );
+        return { ...plannerResult, plannerSession };
+      }
+      return handleTextTurn(transcript, parsedHistory.slice(-24), settings, createAssistant(settings));
     });
 
     res.json(result);
@@ -291,7 +394,6 @@ app.post("/api/voice-turn", upload.single("audio"), async (req, res) => {
 
     const parsedHistory = z
       .array(messageSchema)
-      .max(24)
       .parse(parseJsonField(req.body.history, [])) as ConversationMessage[];
     const settings = settingsSchema.parse({
       ...defaultSettings(),
@@ -312,7 +414,7 @@ app.post("/api/voice-turn", upload.single("audio"), async (req, res) => {
         filename: req.file.originalname || "recording.webm",
         mimeType: req.file.mimetype || "audio/webm"
       },
-      parsedHistory,
+      parsedHistory.slice(-24),
       openAiSettings,
       {
         transcriber: new OpenAITranscriber(client),

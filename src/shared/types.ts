@@ -7,6 +7,15 @@ export interface ConversationMessage {
   createdAt: string;
 }
 
+export interface PlannerSession {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: ConversationMessage[];
+  lastError?: string;
+}
+
 export interface AssistantSettings {
   backend: "codex-cli" | "gemini-cli" | "openai";
   codexMode: "execute" | "plan";
@@ -27,6 +36,7 @@ export interface VoiceTurnResponse {
   audioMimeType: string;
   audioBase64: string;
   settings: AssistantSettings;
+  plannerSession?: PlannerSession;
 }
 
 export interface TextTurnResponse {
@@ -34,6 +44,7 @@ export interface TextTurnResponse {
   assistantMessage: ConversationMessage;
   spokenSummary: string;
   settings: AssistantSettings;
+  plannerSession?: PlannerSession;
 }
 
 export interface ApiErrorResponse {
@@ -41,4 +52,29 @@ export interface ApiErrorResponse {
     code: string;
     message: string;
   };
+}
+
+export type BackgroundSessionStatus = "queued" | "running" | "done" | "blocked" | "failed" | "cancelled";
+export type BackgroundSessionMode = "execute" | "plan";
+
+export interface BackgroundSessionReport {
+  summary: string;
+  changed: string;
+  verified: string;
+  blockers: string;
+  next: string;
+}
+
+export interface BackgroundSession {
+  id: string;
+  title: string;
+  status: BackgroundSessionStatus;
+  mode: BackgroundSessionMode;
+  prompt: string;
+  createdAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  report: BackgroundSessionReport;
+  rawOutput?: string;
+  error?: string;
 }

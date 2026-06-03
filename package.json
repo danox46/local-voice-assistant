@@ -1,8 +1,18 @@
 {
   "name": "local-voice-assistant",
   "version": "0.1.0",
+  "description": "Local browser voice command center for planning with Codex CLI workers, Gemini CLI, or OpenAI voice APIs.",
   "private": true,
+  "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/danox46/local-voice-assistant.git"
+  },
+  "bugs": {
+    "url": "https://github.com/danox46/local-voice-assistant/issues"
+  },
+  "homepage": "https://github.com/danox46/local-voice-assistant#readme",
   "scripts": {
     "dev": "concurrently -k -n server,client -c cyan,magenta \"tsx watch src/server/index.ts\" \"vite --host 127.0.0.1\"",
     "server": "tsx watch src/server/index.ts",
