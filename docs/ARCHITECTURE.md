@@ -85,6 +85,8 @@ Worker sessions can also be focused or archived:
 
 Focused session context is appended as hidden assistant context for future planner turns, so the visible transcript stays clean while follow-up voice commands can refer to "this worker" naturally.
 
+Completed/stopped worker cards are lazily restored from `work/session-reports/*.md` when sessions are listed. The restore path is intentionally read-only: it rebuilds historical visibility and inspection context, but it does not attempt to resume child processes that were running before a server restart.
+
 ## Activity Feed
 
 `activityFeed.ts` keeps a capped list of recent command-center events in `work/activity-events.json`. It records worker lifecycle changes, focus/archive actions, inspections, and Codex mode changes. The client polls `GET /api/activity` alongside worker sessions and renders the latest events as a compact timeline.

@@ -99,6 +99,8 @@ The app writes runtime state to `work/`, including:
 - Codex run output
 - background worker reports
 
+Completed, blocked, failed, and cancelled worker cards are restored from saved reports after a server restart. Running processes are not resumed; start a follow-up worker when a restarted session needs more work.
+
 `work/` is ignored by Git because it may contain private transcripts, project context, and local execution details.
 
 ## Wake Phrase

@@ -1,6 +1,20 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import type { BackgroundSession } from "../shared/types";
-import { classifySessionSupervision } from "./sessionManager";
+import {
+  classifySessionSupervision,
+  listBackgroundSessions,
+  resetBackgroundSessionStateForTests
+} from "./sessionManager";
+
+const originalCwd = process.cwd();
+
+afterEach(() => {
+  process.chdir(originalCwd);
+  resetBackgroundSessionStateForTests();
+});
 
 function session(overrides: Partial<BackgroundSession>): BackgroundSession {
   return {
@@ -94,5 +108,58 @@ describe("classifySessionSupervision", () => {
     expect(result.level).toBe("stale");
     expect(result.reason).toContain("quiet");
     expect(result.userNeeded).toBe(false);
+  });
+
+  it("hydrates completed sessions from saved report files", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "voice-session-reports-"));
+    const reportDir = path.join(tempDir, "work", "session-reports");
+    fs.mkdirSync(reportDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(reportDir, "session-restored.md"),
+      [
+        "# Restored worker",
+        "",
+        "Session: session-restored",
+        "Status: done",
+        "Mode: plan",
+        "Started: 2026-06-03T10:00:00.000Z",
+        "Finished: 2026-06-03T10:03:00.000Z",
+        "",
+        "## Summary",
+        "The worker inspected the project and produced a plan.",
+        "",
+        "## Changed",
+        "None.",
+        "",
+        "## Verified",
+        "Read-only inspection.",
+        "",
+        "## Blockers",
+        "None reported.",
+        "",
+        "## Next",
+        "Review the plan.",
+        "",
+        "## Raw Output",
+        "Session: restored",
+        "Status: done"
+      ].join("\n"),
+      "utf8"
+    );
+
+    process.chdir(tempDir);
+    resetBackgroundSessionStateForTests();
+
+    const sessions = listBackgroundSessions();
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({
+      id: "session-restored",
+      title: "Restored worker",
+      status: "done",
+      mode: "plan",
+      prompt: "Restored from saved worker report."
+    });
+    expect(sessions[0].report.summary).toContain("inspected the project");
   });
 });

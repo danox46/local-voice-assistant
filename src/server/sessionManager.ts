@@ -32,6 +32,7 @@ const sessions = new Map<string, BackgroundSession>();
 const runningSessions = new Map<string, RunningSession>();
 const STALE_SESSION_MS = 1000 * 60 * 8;
 let focusedSessionId: string | null = null;
+let reportsHydrated = false;
 
 function codexCommand() {
   return process.platform === "win32" ? "codex.cmd" : "codex";
@@ -270,6 +271,82 @@ function parseReport(output: string): BackgroundSessionReport {
   };
 }
 
+function parseMarkdownSection(markdown: string, heading: string) {
+  const start = markdown.match(new RegExp(`^## ${heading}\\s*$`, "im"));
+  if (!start || start.index === undefined) return "";
+  const contentStart = start.index + start[0].length;
+  const next = markdown.slice(contentStart).search(/^##\s+/im);
+  return markdown
+    .slice(contentStart, next >= 0 ? contentStart + next : undefined)
+    .trim();
+}
+
+function parseMarkdownLine(markdown: string, label: string) {
+  return markdown.match(new RegExp(`^${label}:\\s*(.*)$`, "im"))?.[1]?.trim() ?? "";
+}
+
+function isBackgroundSessionStatus(value: string): value is BackgroundSessionStatus {
+  return ["queued", "running", "done", "blocked", "failed", "cancelled"].includes(value);
+}
+
+function isBackgroundSessionMode(value: string): value is BackgroundSessionMode {
+  return value === "execute" || value === "plan";
+}
+
+function sessionFromReportFile(filePath: string): BackgroundSession | undefined {
+  try {
+    const markdown = fs.readFileSync(filePath, "utf8");
+    const id = parseMarkdownLine(markdown, "Session") || path.basename(filePath, ".md");
+    const statusText = parseMarkdownLine(markdown, "Status");
+    const modeText = parseMarkdownLine(markdown, "Mode");
+    const title = markdown.match(/^#\s+(.+)$/m)?.[1]?.trim() || "Restored worker";
+    const status = isBackgroundSessionStatus(statusText) ? statusText : "done";
+    const mode = isBackgroundSessionMode(modeText) ? modeText : "execute";
+    const startedAt = parseMarkdownLine(markdown, "Started");
+    const finishedAt = parseMarkdownLine(markdown, "Finished") || undefined;
+    const rawOutput = parseMarkdownSection(markdown, "Raw Output");
+    const createdAt = startedAt || finishedAt || new Date(fs.statSync(filePath).mtime).toISOString();
+    const session: BackgroundSession = {
+      id,
+      title,
+      status: status === "queued" || status === "running" ? "failed" : status,
+      mode,
+      prompt: "Restored from saved worker report.",
+      createdAt,
+      startedAt: startedAt || undefined,
+      finishedAt,
+      focused: false,
+      report: {
+        summary: parseMarkdownSection(markdown, "Summary"),
+        changed: parseMarkdownSection(markdown, "Changed"),
+        verified: parseMarkdownSection(markdown, "Verified"),
+        blockers: parseMarkdownSection(markdown, "Blockers"),
+        next: parseMarkdownSection(markdown, "Next")
+      },
+      supervision: normalSupervision("Session restored from saved report."),
+      rawOutput
+    };
+    session.supervision = classifySessionSupervision(session);
+    return session;
+  } catch {
+    return undefined;
+  }
+}
+
+function hydrateSessionsFromReports() {
+  if (reportsHydrated) return;
+  reportsHydrated = true;
+  const dir = reportDir();
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir)) {
+    if (!entry.endsWith(".md")) continue;
+    const session = sessionFromReportFile(path.join(dir, entry));
+    if (session && !sessions.has(session.id)) {
+      sessions.set(session.id, session);
+    }
+  }
+}
+
 async function writeReport(session: BackgroundSession) {
   await fs.promises.mkdir(reportDir(), { recursive: true });
   const body = [
@@ -333,6 +410,7 @@ function finishSession(id: string, patch: Partial<BackgroundSession>) {
 }
 
 export function listBackgroundSessions() {
+  hydrateSessionsFromReports();
   const nextSessions = [...sessions.values()].map(withSupervision);
   for (const session of nextSessions) {
     sessions.set(session.id, session);
@@ -341,6 +419,7 @@ export function listBackgroundSessions() {
 }
 
 export function getBackgroundSession(id: string) {
+  hydrateSessionsFromReports();
   const session = sessions.get(id);
   if (!session) return undefined;
   const supervised = withSupervision(session);
@@ -536,4 +615,11 @@ export function archiveBackgroundSession(id: string) {
     severity: "info"
   });
   return archived;
+}
+
+export function resetBackgroundSessionStateForTests() {
+  sessions.clear();
+  runningSessions.clear();
+  focusedSessionId = null;
+  reportsHydrated = false;
 }
