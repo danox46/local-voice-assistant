@@ -141,6 +141,8 @@ The same controls are available by voice in Codex mode:
 - `switch to plan mode`
 - `use execute mode`
 - `what mode are we in`
+- `start a new chat`
+- `catch me up on the planning session`
 
 ## Architecture
 

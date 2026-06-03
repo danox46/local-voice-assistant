@@ -7,6 +7,7 @@ import type {
   TextTurnResponse
 } from "../shared/types";
 import { recordActivity } from "./activityFeed";
+import { getPlannerSession, resetPlannerSession } from "./plannerSessionStore";
 import { spokenSummaryFrom } from "./plannerTurn";
 import {
   archiveBackgroundSession,
@@ -48,12 +49,14 @@ function commandResponse(input: {
   answer: string;
   settings: AssistantSettings;
   spokenSummary?: string;
+  plannerSession?: TextTurnResponse["plannerSession"];
 }): TextTurnResponse {
   return {
     userMessage: createMessage("user", input.transcript),
     assistantMessage: createMessage("assistant", input.answer),
     spokenSummary: input.spokenSummary ?? spokenSummaryFrom(input.answer, input.settings),
-    settings: input.settings
+    settings: input.settings,
+    plannerSession: input.plannerSession
   };
 }
 
@@ -100,6 +103,35 @@ function followUpPrompt(session: BackgroundSession, history: ConversationMessage
   ].join("\n\n");
 }
 
+function plannerRecap(messages: ConversationMessage[]) {
+  const turns = messages.reduce(
+    (count, message) => count + (message.role === "user" ? 1 : 0),
+    0
+  );
+  const latestUser = [...messages].reverse().find((message) => message.role === "user");
+  const latestAssistant = [...messages].reverse().find((message) => message.role === "assistant");
+
+  if (!messages.length) {
+    return {
+      answer: "The main planning session is empty. We can start fresh.",
+      spokenSummary: "The main planning session is empty."
+    };
+  }
+
+  return {
+    answer: [
+      `Main planning session: ${turns} user turn${turns === 1 ? "" : "s"} saved.`,
+      latestUser ? `Latest user request: ${latestUser.content}` : "",
+      latestAssistant ? `Latest assistant response: ${latestAssistant.content}` : ""
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+    spokenSummary: latestUser
+      ? `There are ${turns} saved user turns. Latest request: ${latestUser.content}`
+      : `There are ${turns} saved user turns.`
+  };
+}
+
 export function handleSessionCommand(
   transcript: string,
   history: ConversationMessage[],
@@ -108,6 +140,46 @@ export function handleSessionCommand(
   const original = transcript.trim();
   const clean = cleanTranscript(transcript);
   if (!clean) return undefined;
+
+  if (
+    /\b(new|fresh|reset|clear|start over)\b/.test(clean) &&
+    /\b(chat|conversation|planner|planning session|main session)\b/.test(clean)
+  ) {
+    const plannerSession = resetPlannerSession();
+    recordActivity({
+      kind: "system",
+      title: "Planner session reset",
+      detail: "Voice command cleared the main planning conversation.",
+      severity: "warning"
+    });
+    return commandResponse({
+      transcript: original,
+      settings,
+      plannerSession,
+      answer: "Started a fresh planning chat. Worker history and saved reports are still available.",
+      spokenSummary: "Started a fresh planning chat."
+    });
+  }
+
+  if (
+    /\b(recap|summarize|summary|resume|catch me up)\b/.test(clean) &&
+    /\b(chat|conversation|planner|planning session|main session|where we are)\b/.test(clean)
+  ) {
+    const plannerSession = getPlannerSession();
+    const recap = plannerRecap(plannerSession.messages);
+    recordActivity({
+      kind: "system",
+      title: "Planner recap requested",
+      detail: `Voice command requested a recap of ${plannerSession.messages.length} saved messages.`,
+      severity: "info"
+    });
+    return commandResponse({
+      transcript: original,
+      settings,
+      answer: recap.answer,
+      spokenSummary: recap.spokenSummary
+    });
+  }
 
   if (
     /\b(what|which|current|show|tell me)\b/.test(clean) &&

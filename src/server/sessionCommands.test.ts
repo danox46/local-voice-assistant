@@ -3,6 +3,26 @@ import type { AssistantSettings, BackgroundSession } from "../shared/types";
 
 const sessions: BackgroundSession[] = [];
 const recordActivity = vi.fn();
+const plannerSession = {
+  id: "main",
+  title: "Main planning session",
+  createdAt: "2026-06-03T10:00:00.000Z",
+  updatedAt: "2026-06-03T10:10:00.000Z",
+  messages: [
+    {
+      id: "user-1",
+      role: "user" as const,
+      content: "Build a voice cockpit for Codex.",
+      createdAt: "2026-06-03T10:00:00.000Z"
+    },
+    {
+      id: "assistant-1",
+      role: "assistant" as const,
+      content: "We should add planner memory, workers, and activity tracking.",
+      createdAt: "2026-06-03T10:01:00.000Z"
+    }
+  ]
+};
 
 vi.mock("./activityFeed", () => ({
   recordActivity: (...args: unknown[]) => recordActivity(...args)
@@ -10,6 +30,15 @@ vi.mock("./activityFeed", () => ({
 
 vi.mock("./plannerTurn", () => ({
   spokenSummaryFrom: vi.fn((answer: string) => answer.split(/\s+/).slice(0, 12).join(" "))
+}));
+
+vi.mock("./plannerSessionStore", () => ({
+  getPlannerSession: vi.fn(() => plannerSession),
+  resetPlannerSession: vi.fn(() => ({
+    ...plannerSession,
+    updatedAt: "2026-06-03T10:12:00.000Z",
+    messages: []
+  }))
 }));
 
 vi.mock("./sessionManager", () => ({
@@ -172,6 +201,31 @@ describe("handleSessionCommand", () => {
     expect(result?.assistantMessage.content).toContain("Current Codex mode");
     expect(result?.spokenSummary).toContain("execute");
     expect(recordActivity).toHaveBeenCalledWith(expect.objectContaining({ title: "Mode checked" }));
+  });
+
+  it("resets the main planning chat by voice", async () => {
+    const { handleSessionCommand } = await import("./sessionCommands");
+
+    const result = handleSessionCommand("Start a new chat", [], settings);
+
+    expect(result?.plannerSession?.messages).toEqual([]);
+    expect(result?.assistantMessage.content).toContain("fresh planning chat");
+    expect(recordActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Planner session reset" })
+    );
+  });
+
+  it("recaps the main planning chat by voice", async () => {
+    const { handleSessionCommand } = await import("./sessionCommands");
+
+    const result = handleSessionCommand("Catch me up on the planning session", [], settings);
+
+    expect(result?.assistantMessage.content).toContain("Main planning session");
+    expect(result?.assistantMessage.content).toContain("Build a voice cockpit");
+    expect(result?.spokenSummary).toContain("Latest request");
+    expect(recordActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Planner recap requested" })
+    );
   });
 
   it("returns undefined for ordinary conversational turns", async () => {
