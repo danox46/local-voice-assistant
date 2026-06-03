@@ -17,14 +17,19 @@ import type {
   AssistantSettings,
   BackgroundSession,
   ConversationMessage,
+  PlannerPrompt,
+  TextTurnResponse,
   VoiceTurnResponse
 } from "../shared/types";
 import {
+  archiveSession,
   cancelSession,
   cancelTurn,
   createSession,
+  focusSession,
   getHealth,
   getPlannerSession,
+  inspectSession,
   listSessions,
   resetPlannerSession,
   sendAudioTextTurn,
@@ -35,6 +40,7 @@ import { MicActivityMonitor, PushToTalkRecorder, PushToTalkSpeechRecognizer } fr
 
 type UiState = "loading" | "idle" | "recording" | "thinking" | "speaking" | "error";
 const AUTO_STOP_AFTER_MS = 3500;
+const WAKE_PHRASE = "tensoon";
 
 const fallbackSettings: AssistantSettings = {
   backend: "codex-cli",
@@ -79,6 +85,10 @@ function sessionSummary(session: BackgroundSession) {
     session.report.summary ||
     (session.status === "running" ? "Worker is still running." : "No summary yet.")
   );
+}
+
+function sessionNeedsAttention(session: BackgroundSession) {
+  return session.supervision.shouldNotify || session.supervision.level === "needs-user";
 }
 
 export function splitSpeechIntoChunks(text: string, maxChunkLength = 180) {
@@ -126,6 +136,18 @@ export function splitSpeechIntoChunks(text: string, maxChunkLength = 180) {
   return chunks;
 }
 
+export function containsWakePhrase(transcript: string, wakePhrase = WAKE_PHRASE) {
+  const normalized = transcript
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const compact = normalized.replace(/\s+/g, "");
+  const expected = wakePhrase.toLowerCase().replace(/\s+/g, "");
+  const likelyVariants = [expected, "tension", "tensoon", "tenson", "tensun", "tenzone"];
+  return likelyVariants.some((variant) => compact.includes(variant)) || normalized.includes("ten soon");
+}
+
 export function App() {
   const [uiState, setUiState] = useState<UiState>("loading");
   const [settings, setSettings] = useState<AssistantSettings>(fallbackSettings);
@@ -144,9 +166,16 @@ export function App() {
   const [micLevel, setMicLevel] = useState(0);
   const [autoStopRemaining, setAutoStopRemaining] = useState(0);
   const [sessions, setSessions] = useState<BackgroundSession[]>([]);
+  const [wakeEnabled, setWakeEnabled] = useState(true);
+  const [wakeStatus, setWakeStatus] = useState<"off" | "listening" | "heard" | "error">("off");
+  const [plannerPrompt, setPlannerPrompt] = useState<PlannerPrompt | null>(null);
+  const [sessionInspectionNotes, setSessionInspectionNotes] = useState<Record<string, string>>({});
+  const [showArchivedSessions, setShowArchivedSessions] = useState(false);
 
   const recorderRef = useRef(new PushToTalkRecorder());
   const recognizerRef = useRef<PushToTalkSpeechRecognizer | null>(null);
+  const wakeRecognizerRef = useRef<PushToTalkSpeechRecognizer | null>(null);
+  const wakeRestartTimerRef = useRef<number | null>(null);
   const micMonitorRef = useRef(new MicActivityMonitor());
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const activeTurnAbortRef = useRef<AbortController | null>(null);
@@ -160,6 +189,8 @@ export function App() {
   const speechTimeoutRef = useRef<number | null>(null);
   const mutedRef = useRef(muted);
   const volumeRef = useRef(volume);
+  const uiStateRef = useRef(uiState);
+  const wakeEnabledRef = useRef(wakeEnabled);
   const knownSessionStatusesRef = useRef<Map<string, BackgroundSession["status"]>>(new Map());
   const sessionsHydratedRef = useRef(false);
 
@@ -188,13 +219,104 @@ export function App() {
     settings.backend === "openai" ||
     ((settings.backend === "codex-cli" || settings.backend === "gemini-cli") &&
       settings.transcriptionMode !== "browser");
-  const runningSessions = sessions.filter(
+  const visibleSessions = sessions.filter((session) => showArchivedSessions || !session.archivedAt);
+  const focusedSession = sessions.find((session) => session.focused && !session.archivedAt);
+  const runningSessions = visibleSessions.filter(
     (session) => session.status === "queued" || session.status === "running"
   );
-  const attentionSessions = sessions.filter(
-    (session) => session.status === "blocked" || session.status === "failed"
+  const attentionSessions = visibleSessions.filter(
+    (session) => sessionNeedsAttention(session)
   );
-  const completedSessions = sessions.filter((session) => session.status === "done");
+  const completedSessions = visibleSessions.filter((session) => session.status === "done");
+  const canUseWakePhrase = PushToTalkSpeechRecognizer.isSupported();
+  const wakeIsArmed = wakeEnabled && canUseWakePhrase && wakeStatus === "listening";
+
+  function applyTextTurn(turn: TextTurnResponse) {
+    setSpokenSummary(turn.spokenSummary);
+    setPlannerPrompt(turn.plannerPrompt ?? null);
+    setMessages((current) =>
+      turn.plannerSession?.messages ?? [...current, turn.userMessage, turn.assistantMessage]
+    );
+  }
+
+  function answerPlannerQuestion(question: string) {
+    setTypedPrompt((current) => {
+      const prefix = `Answering: ${question}`;
+      return current.trim() ? `${current.trim()}\n${prefix}\n` : `${prefix}\n`;
+    });
+  }
+
+  function clearWakeRestartTimer() {
+    if (!wakeRestartTimerRef.current) return;
+    window.clearTimeout(wakeRestartTimerRef.current);
+    wakeRestartTimerRef.current = null;
+  }
+
+  function stopWakeListener() {
+    clearWakeRestartTimer();
+    const recognizer = wakeRecognizerRef.current;
+    wakeRecognizerRef.current = null;
+    void recognizer?.stop();
+  }
+
+  function shouldArmWakeListener() {
+    return (
+      wakeEnabledRef.current &&
+      PushToTalkSpeechRecognizer.isSupported() &&
+      (uiStateRef.current === "idle" || uiStateRef.current === "error")
+    );
+  }
+
+  function scheduleWakeRestart() {
+    clearWakeRestartTimer();
+    if (!shouldArmWakeListener()) return;
+    wakeRestartTimerRef.current = window.setTimeout(() => {
+      wakeRestartTimerRef.current = null;
+      startWakeListener();
+    }, 700);
+  }
+
+  function triggerWakePhrase(transcript: string) {
+    if (!shouldArmWakeListener()) return;
+    setWakeStatus("heard");
+    stopWakeListener();
+    setLiveTranscript(transcript);
+    clearBrowserPlaybackQueue();
+    window.setTimeout(() => {
+      if (uiStateRef.current === "idle" || uiStateRef.current === "error") {
+        void startRecording();
+      }
+    }, 150);
+  }
+
+  function startWakeListener() {
+    if (!shouldArmWakeListener() || wakeRecognizerRef.current) return;
+    try {
+      const recognizer = new PushToTalkSpeechRecognizer();
+      wakeRecognizerRef.current = recognizer;
+      recognizer.start({
+        language: settings.speechLanguage,
+        onTranscript: (transcript) => {
+          if (containsWakePhrase(transcript)) {
+            triggerWakePhrase(transcript);
+          }
+        },
+        onError: () => {
+          wakeRecognizerRef.current = null;
+          setWakeStatus("error");
+          scheduleWakeRestart();
+        },
+        onEnd: () => {
+          wakeRecognizerRef.current = null;
+          scheduleWakeRestart();
+        }
+      });
+      setWakeStatus("listening");
+    } catch {
+      wakeRecognizerRef.current = null;
+      setWakeStatus("error");
+    }
+  }
 
   async function refreshSessions() {
     try {
@@ -203,8 +325,7 @@ export function App() {
       const completedSession = nextSessions.find((session) => {
         const previousStatus = knownStatuses.get(session.id);
         const wasActive = previousStatus === "queued" || previousStatus === "running";
-        const nowNeedsReport =
-          session.status === "done" || session.status === "blocked" || session.status === "failed";
+        const nowNeedsReport = session.supervision.shouldNotify;
         return sessionsHydratedRef.current && wasActive && nowNeedsReport;
       });
 
@@ -294,6 +415,39 @@ export function App() {
     window.speechSynthesis.cancel();
     setUiState((current) => (current === "speaking" ? "idle" : current));
   }
+
+  useEffect(() => {
+    uiStateRef.current = uiState;
+  }, [uiState]);
+
+  useEffect(() => {
+    wakeEnabledRef.current = wakeEnabled;
+  }, [wakeEnabled]);
+
+  useEffect(() => {
+    if (!wakeEnabled) {
+      stopWakeListener();
+      setWakeStatus("off");
+      return;
+    }
+
+    if (!canUseWakePhrase) {
+      setWakeStatus("error");
+      return;
+    }
+
+    if (uiState === "idle" || uiState === "error") {
+      startWakeListener();
+      return;
+    }
+
+    stopWakeListener();
+    setWakeStatus("off");
+  }, [canUseWakePhrase, settings.speechLanguage, uiState, wakeEnabled]);
+
+  useEffect(() => {
+    return () => stopWakeListener();
+  }, []);
 
   useEffect(() => {
     getHealth()
@@ -418,6 +572,7 @@ export function App() {
   }, [uiState, usesRecordedAudio]);
 
   async function startRecording() {
+    stopWakeListener();
     setError("");
     setLiveTranscript("");
     setMicLevel(0);
@@ -485,10 +640,7 @@ export function App() {
 
         if (audioUrl) URL.revokeObjectURL(audioUrl);
         setAudioUrl("");
-        setSpokenSummary(turn.spokenSummary);
-        setMessages((current) =>
-          turn.plannerSession?.messages ?? [...current, turn.userMessage, turn.assistantMessage]
-        );
+        applyTextTurn(turn);
         void refreshSessions();
 
         if (!muted) {
@@ -516,10 +668,7 @@ export function App() {
 
         if (audioUrl) URL.revokeObjectURL(audioUrl);
         setAudioUrl("");
-        setSpokenSummary(turn.spokenSummary);
-        setMessages((current) =>
-          turn.plannerSession?.messages ?? [...current, turn.userMessage, turn.assistantMessage]
-        );
+        applyTextTurn(turn);
         void refreshSessions();
 
         if (!muted) {
@@ -540,6 +689,7 @@ export function App() {
       if (audioUrl) URL.revokeObjectURL(audioUrl);
       setAudioUrl(nextUrl);
       setSpokenSummary(turn.spokenSummary);
+      setPlannerPrompt(turn.plannerPrompt ?? null);
       setMessages((current) =>
         turn.plannerSession?.messages ?? [...current, turn.userMessage, turn.assistantMessage]
       );
@@ -589,10 +739,7 @@ export function App() {
       activeTurnAbortRef.current = null;
       setTypedPrompt("");
       setLiveTranscript("");
-      setSpokenSummary(turn.spokenSummary);
-      setMessages((current) =>
-        turn.plannerSession?.messages ?? [...current, turn.userMessage, turn.assistantMessage]
-      );
+      applyTextTurn(turn);
       void refreshSessions();
 
       if (!muted) {
@@ -697,11 +844,55 @@ export function App() {
     }
   }
 
+  async function inspectSessionQuietly(session: BackgroundSession) {
+    try {
+      const inspection = await inspectSession(session.id);
+      setSessionInspectionNotes((current) => ({
+        ...current,
+        [session.id]: inspection.summary
+      }));
+      if (inspection.issueFound && inspection.userNeeded) {
+        const summary = `Inspection found a user-needed blocker for ${session.title}. ${inspection.summary}`;
+        setSpokenSummary(summary);
+        enqueueBrowserSummary(summary);
+      } else if (inspection.issueFound) {
+        setSpokenSummary(`Inspection found an agent-actionable issue for ${session.title}.`);
+      } else {
+        setSpokenSummary(`Inspection found no issue for ${session.title}.`);
+      }
+      await refreshSessions();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not inspect the worker session.");
+    }
+  }
+
+  async function focusWorkerSession(session: BackgroundSession) {
+    try {
+      await focusSession(session.id);
+      await refreshSessions();
+      const summary = `${session.title} is now the focused worker context.`;
+      setSpokenSummary(summary);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not focus the worker session.");
+    }
+  }
+
+  async function archiveWorkerSession(session: BackgroundSession) {
+    try {
+      await archiveSession(session.id);
+      await refreshSessions();
+      setSpokenSummary(`${session.title} was archived.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not archive the worker session.");
+    }
+  }
+
   async function newChat() {
     try {
       const plannerSession = await resetPlannerSession();
       setMessages(plannerSession.messages);
       setError("");
+      setPlannerPrompt(null);
     } catch (err) {
       setMessages([]);
       setError(err instanceof Error ? err.message : "Could not reset planner session.");
@@ -716,6 +907,7 @@ export function App() {
     activeTurnAbortRef.current?.abort();
     activeTurnAbortRef.current = null;
     clearBrowserPlaybackQueue();
+    stopWakeListener();
     micMonitorRef.current.stop();
     setUiState("idle");
   }
@@ -768,7 +960,11 @@ export function App() {
         <div className={`talk-zone ${uiState}`}>
           <div className="status-pill">
             <span className="status-dot" />
-            {uiState === "thinking" ? `${backendLabel} thinking` : statusCopy(uiState)}
+            {uiState === "thinking"
+              ? `${backendLabel} thinking`
+              : wakeIsArmed && uiState === "idle"
+                ? "Wake phrase armed"
+                : statusCopy(uiState)}
           </div>
           <div
             className="mic-visual"
@@ -817,6 +1013,15 @@ export function App() {
               Auto-stops in {(autoStopRemaining / 1000).toFixed(1)}s after your last words.
             </p>
           ) : null}
+          {uiState === "idle" && wakeEnabled ? (
+            <p className={`wake-hint ${wakeStatus}`}>
+              {wakeIsArmed
+                ? `Say "${WAKE_PHRASE}" to start listening.`
+                : canUseWakePhrase
+                  ? "Wake phrase is waiting for the speech listener."
+                  : "Wake phrase needs browser speech recognition support."}
+            </p>
+          ) : null}
           {uiState === "recording" ? (
             <button className="danger-button" onClick={() => void stopRecording()} type="button">
               Stop and send
@@ -857,7 +1062,13 @@ export function App() {
             choose Sign in with Google, then restart the server.
           </div>
         ) : null}
-        {error ? <div className="notice">{error}</div> : null}
+          {error ? <div className="notice">{error}</div> : null}
+        {focusedSession ? (
+          <div className="setup-note focused-note">
+            Focused worker: <strong>{focusedSession.title}</strong>. Follow-up voice prompts include
+            this worker's summary and next step as context.
+          </div>
+        ) : null}
 
         <div className="panes">
           <section className="panel transcript-panel">
@@ -923,6 +1134,34 @@ export function App() {
           </section>
         </div>
 
+        {plannerPrompt ? (
+          <section className="panel planner-panel">
+            <div className="panel-heading command-heading">
+              <ClipboardList size={18} />
+              <div>
+                <h2>Planning Questions</h2>
+                <p>{plannerPrompt.topic}</p>
+              </div>
+            </div>
+            <div className="planner-question-grid">
+              {plannerPrompt.questions.map((question) => (
+                <article className="planner-question" key={question.id}>
+                  <span>{question.label}</span>
+                  <p>{question.question}</p>
+                  <small>{question.why}</small>
+                  <button
+                    className="small-button"
+                    type="button"
+                    onClick={() => answerPlannerQuestion(question.question)}
+                  >
+                    Answer
+                  </button>
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
         <section className="panel command-center">
           <div className="panel-heading command-heading">
             <ClipboardList size={18} />
@@ -933,27 +1172,63 @@ export function App() {
                 {completedSessions.length} done
               </p>
             </div>
+            <button
+              className="small-button"
+              type="button"
+              onClick={() => setShowArchivedSessions((value) => !value)}
+            >
+              {showArchivedSessions ? "Hide archived" : "Show archived"}
+            </button>
           </div>
 
-          {sessions.length ? (
+          {visibleSessions.length ? (
             <div className="session-grid">
-              {sessions.map((session) => (
-                <article className={`session-card ${session.status}`} key={session.id}>
+              {visibleSessions.map((session) => (
+                <article
+                  className={`session-card ${session.status} ${session.focused ? "focused" : ""} ${
+                    session.archivedAt ? "archived" : ""
+                  }`}
+                  key={session.id}
+                >
                   <div className="session-card-top">
                     <div>
                       <span className="session-status">{sessionStatusCopy(session)}</span>
                       <h3>{session.title}</h3>
                     </div>
-                    <span className="session-mode">{session.mode}</span>
+                    <span className="session-mode">{session.focused ? "focused" : session.mode}</span>
                   </div>
                   <p>{sessionSummary(session)}</p>
                   {session.report.blockers && session.report.blockers !== "None reported." ? (
                     <p className="session-blocker">{session.report.blockers}</p>
                   ) : null}
                   {session.report.next ? <p className="session-next">{session.report.next}</p> : null}
+                  {session.supervision.level !== "normal" ? (
+                    <p className={`session-supervision ${session.supervision.level}`}>
+                      {session.supervision.userNeeded ? "User needed: " : "Agent note: "}
+                      {session.supervision.reason}
+                    </p>
+                  ) : null}
+                  {sessionInspectionNotes[session.id] ? (
+                    <p className="session-inspection">{sessionInspectionNotes[session.id]}</p>
+                  ) : null}
                   <div className="session-actions">
                     <button className="small-button" type="button" onClick={() => speakSession(session)}>
                       Read
+                    </button>
+                    <button
+                      className="small-button"
+                      disabled={Boolean(session.archivedAt)}
+                      type="button"
+                      onClick={() => void focusWorkerSession(session)}
+                    >
+                      Focus
+                    </button>
+                    <button
+                      className="small-button"
+                      type="button"
+                      onClick={() => void inspectSessionQuietly(session)}
+                    >
+                      Inspect
                     </button>
                     <button
                       className="small-button"
@@ -962,6 +1237,14 @@ export function App() {
                       onClick={() => void continueSession(session)}
                     >
                       Continue
+                    </button>
+                    <button
+                      className="small-button"
+                      disabled={session.status === "queued" || session.status === "running"}
+                      type="button"
+                      onClick={() => void archiveWorkerSession(session)}
+                    >
+                      Archive
                     </button>
                     <button
                       className="small-button danger"
@@ -1114,6 +1397,15 @@ export function App() {
             </select>
           </label>
         ) : null}
+        <label className="checkbox-label">
+          <input
+            checked={wakeEnabled}
+            disabled={!canUseWakePhrase}
+            type="checkbox"
+            onChange={(event) => setWakeEnabled(event.target.checked)}
+          />
+          Wake on "{WAKE_PHRASE}"
+        </label>
         {settings.backend === "codex-cli" ? (
           <label>
             Codex mode
@@ -1173,7 +1465,7 @@ export function App() {
         </label>
         <div className="future-box">
           <Pause size={18} />
-          <p>Wake phrase, always-listen, Home Assistant, and Codex bridges are reserved as adapters.</p>
+          <p>Wake phrase is local browser speech. Always-listen, Home Assistant, and Codex bridges are reserved as adapters.</p>
         </div>
       </aside>
     </main>

@@ -5,11 +5,14 @@ Local Voice Assistant is a local web app for talking to a planning agent, keepin
 ## What It Does
 
 - Push-to-talk browser UI with live microphone activity.
+- Optional wake phrase listener: say `Tensoon` while the app is idle to start a command.
 - Browser speech recognition with typed fallback.
 - Server-side planner context that survives refreshes and failed turns.
 - Full response history on screen.
 - Short spoken summaries with a playback queue to prevent overlapping notifications.
 - Background worker sessions for Codex CLI tasks.
+- Voice-native worker commands for focusing, inspecting, continuing, cancelling, and archiving sessions.
+- Session supervision that separates stale work, user-needed blockers, and agent-actionable issues.
 - Optional Gemini CLI and OpenAI cloud voice/transcription modes.
 
 ## Modes
@@ -22,6 +25,8 @@ Worker modes:
 
 - `execute`: workers may edit files in `CODEX_WORKDIR`
 - `plan`: workers inspect and plan without editing
+
+When Codex mode is set to `plan`, the main agent can pause before delegation and ask structured planning questions. Those questions appear in the app as a planning panel and remain answerable by voice or typed fallback.
 
 ### Gemini CLI
 
@@ -93,6 +98,40 @@ The app writes runtime state to `work/`, including:
 - background worker reports
 
 `work/` is ignored by Git because it may contain private transcripts, project context, and local execution details.
+
+## Wake Phrase
+
+Enable **Wake on "tensoon"** in Settings to arm the idle browser-speech listener. When the app hears `Tensoon` or likely transcript variants such as `ten soon`, it switches into the normal recording flow.
+
+This uses browser speech recognition, so support depends on the browser and microphone permissions. Push-to-talk remains available even when wake phrase support is unavailable.
+
+## Session Supervision
+
+Background workers include a supervision signal:
+
+- `normal`: no action needed
+- `stale`: the worker has been running longer than expected; inspect logs before interrupting
+- `needs-user`: credentials, approval, a manual choice, or permission is needed
+- `auto-actionable`: the worker hit a technical issue the agent can usually handle
+
+Only `needs-user` sessions are treated as interrupt-worthy spoken notifications. Other states stay visible in the worker cards.
+
+Use **Inspect** on a worker card to check captured output before escalating. If no concrete issue is found, the result stays as a quiet page note. If the inspection finds a user-needed blocker, it is read aloud.
+
+Worker cards also support:
+
+- **Focus**: make a worker the active context for follow-up voice prompts
+- **Continue**: start a follow-up worker from the current report
+- **Archive**: hide completed or stopped sessions from the main dashboard
+- **Show archived**: bring archived sessions back into view
+
+The same controls are available by voice in Codex mode:
+
+- `focus the latest worker`
+- `inspect the current worker`
+- `continue the focused session`
+- `cancel the current worker`
+- `archive completed workers`
 
 ## Architecture
 

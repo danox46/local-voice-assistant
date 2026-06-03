@@ -8,6 +8,8 @@ import type {
   BackgroundSession,
   BackgroundSessionMode,
   ConversationMessage,
+  PlannerPrompt,
+  PlannerQuestion,
   TextTurnResponse
 } from "../shared/types";
 import { config } from "./config";
@@ -23,6 +25,10 @@ const statusPattern = /\b(status|progress|running|workers?|sessions?|finished|bl
 const explicitDelegatePattern =
   /\b(background|delegate|hand off|kick off|let that run|start a session|start the next step|worker)\b/i;
 const conversationalPattern = /\b(why|how|what do you think|brainstorm|talk through|explain)\b/i;
+const planningPattern =
+  /\b(plan|planning|architect|architecture|strategy|roadmap|scope|spec|requirements|proposal|approach|design)\b/i;
+const answerPattern =
+  /\b(answer|answers|for now|the goal is|audience|constraint|deadline|priority|success|budget|scope)\b/i;
 
 function codexCommand() {
   return process.platform === "win32" ? "codex.cmd" : "codex";
@@ -88,6 +94,86 @@ function shouldDelegate(transcript: string) {
   if (explicitDelegatePattern.test(transcript)) return true;
   if (conversationalPattern.test(transcript) && !actionPattern.test(transcript)) return false;
   return actionPattern.test(transcript);
+}
+
+function planningTopic(transcript: string) {
+  const clean = transcript.replace(/\s+/g, " ").trim();
+  const words = clean.split(/\s+/).slice(0, 10).join(" ");
+  return words || "Planning topic";
+}
+
+export function planningQuestionsFor(transcript: string): PlannerQuestion[] {
+  const lower = transcript.toLowerCase();
+  const questions: PlannerQuestion[] = [
+    {
+      id: "goal",
+      label: "Goal",
+      question: "What outcome are we trying to create, and what would make this feel successful?",
+      why: "The planner needs a success target before choosing execution steps."
+    },
+    {
+      id: "scope",
+      label: "Scope",
+      question: "What should be included now, and what should explicitly wait for later?",
+      why: "Clear boundaries keep workers from doing too much or solving the wrong problem."
+    },
+    {
+      id: "constraints",
+      label: "Constraints",
+      question: "Are there constraints around tools, budget, timing, risk, brand, or approval?",
+      why: "Constraints help the agent decide when to act, ask, or stay in plan mode."
+    }
+  ];
+
+  if (/\b(user|customer|client|audience|buyer)\b/i.test(lower)) {
+    questions.splice(1, 0, {
+      id: "audience",
+      label: "Audience",
+      question: "Who is this for, and what do they already know or need from us?",
+      why: "Audience context changes the tone, priorities, and deliverables."
+    });
+  }
+
+  if (/\b(app|interface|ui|ux|voice|chat)\b/i.test(lower)) {
+    questions.splice(2, 0, {
+      id: "workflow",
+      label: "Workflow",
+      question: "What is the ideal user flow from first trigger to completed task?",
+      why: "Workflow details help the planner translate the idea into product behavior."
+    });
+  }
+
+  return questions.slice(0, 4);
+}
+
+function shouldAskPlanningQuestions(
+  transcript: string,
+  history: ConversationMessage[],
+  settings: AssistantSettings
+) {
+  if (answerPattern.test(transcript)) return false;
+  if (conversationalPattern.test(transcript) && !actionPattern.test(transcript)) return false;
+  if (history.slice(-4).some((message) => message.content.includes("Planning questions"))) {
+    return false;
+  }
+  if (settings.codexMode === "plan" && actionPattern.test(transcript)) return true;
+  return planningPattern.test(transcript) && !explicitDelegatePattern.test(transcript);
+}
+
+function createPlannerPrompt(transcript: string): PlannerPrompt {
+  return {
+    topic: planningTopic(transcript),
+    status: "needs-input",
+    questions: planningQuestionsFor(transcript)
+  };
+}
+
+function formatPlannerQuestions(prompt: PlannerPrompt) {
+  return [
+    `Planning questions for: ${prompt.topic}`,
+    "",
+    ...prompt.questions.map((question, index) => `${index + 1}. ${question.question}`)
+  ].join("\n");
 }
 
 function workerPrompt(transcript: string, history: ConversationMessage[], settings: AssistantSettings) {
@@ -303,13 +389,38 @@ export async function handlePlannerTurn(
   const userMessage = createMessage("user", cleanTranscript);
   const sessions = listBackgroundSessions();
 
-  if (statusPattern.test(cleanTranscript) && !actionPattern.test(cleanTranscript)) {
+  if (
+    statusPattern.test(cleanTranscript) &&
+    !actionPattern.test(cleanTranscript) &&
+    !answerPattern.test(cleanTranscript)
+  ) {
     const status = formatStatusSummary(sessions);
     return {
       userMessage,
       assistantMessage: createMessage("assistant", status.fullAnswer),
       spokenSummary: status.spokenSummary,
       settings
+    };
+  }
+
+  if (shouldAskPlanningQuestions(cleanTranscript, history, settings)) {
+    const plannerPrompt = createPlannerPrompt(cleanTranscript);
+    const fullAnswer = [
+      "I can plan this, but I want to lock the shape before starting workers.",
+      formatPlannerQuestions(plannerPrompt),
+      "",
+      "Answer these naturally in one message. I will turn the answers into a plan or hand off bounded worker sessions after that."
+    ].join("\n\n");
+
+    return {
+      userMessage,
+      assistantMessage: createMessage("assistant", fullAnswer),
+      spokenSummary: `I need a few planning answers first. ${plannerPrompt.questions
+        .slice(0, 2)
+        .map((question) => question.question)
+        .join(" ")}`,
+      settings,
+      plannerPrompt
     };
   }
 

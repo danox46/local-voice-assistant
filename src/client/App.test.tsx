@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { App, splitSpeechIntoChunks } from "./App";
+import { App, containsWakePhrase, splitSpeechIntoChunks } from "./App";
 import * as api from "./api";
 
 vi.mock("./api");
@@ -57,6 +57,7 @@ describe("App", () => {
     expect(screen.getByText("Full response")).toBeInTheDocument();
     expect(screen.getByText("Worker Sessions")).toBeInTheDocument();
     expect(screen.getByText("Spoken summary · AI-generated voice")).toBeInTheDocument();
+    expect(screen.getByText('Wake on "tensoon"')).toBeInTheDocument();
   });
 
   it("shows the setup message when Codex CLI is missing", async () => {
@@ -85,5 +86,12 @@ describe("App", () => {
     expect(chunks.length).toBeGreaterThan(1);
     expect(chunks.join(" ")).toContain("final sentence");
     expect(chunks.every((chunk) => chunk.length <= 90)).toBe(true);
+  });
+
+  it("recognizes the Tensoon wake phrase from likely transcripts", () => {
+    expect(containsWakePhrase("Tensoon")).toBe(true);
+    expect(containsWakePhrase("hey ten soon start listening")).toBe(true);
+    expect(containsWakePhrase("tension please")).toBe(true);
+    expect(containsWakePhrase("keep waiting for now")).toBe(false);
   });
 });

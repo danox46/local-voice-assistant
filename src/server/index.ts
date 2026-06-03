@@ -15,6 +15,7 @@ import { OpenAIAssistantResponder } from "./providers/openaiAssistantResponder";
 import { OpenAISpeechSynthesizer } from "./providers/openaiSpeechSynthesizer";
 import { OpenAITranscriber } from "./providers/openaiTranscriber";
 import { handlePlannerTurn } from "./plannerTurn";
+import { handleSessionCommand } from "./sessionCommands";
 import {
   appendPlannerTurn,
   getPlannerContextMessages,
@@ -28,9 +29,13 @@ import { futureListenerModes, integrationBoundaries, pushToTalkListener } from "
 import fs from "node:fs";
 import path from "node:path";
 import {
+  archiveBackgroundSession,
   cancelBackgroundSession,
+  focusBackgroundSession,
   createBackgroundSession,
+  getFocusedBackgroundSession,
   getBackgroundSession,
+  inspectBackgroundSession,
   listBackgroundSessions
 } from "./sessionManager";
 
@@ -118,6 +123,24 @@ function normalizeSettings(settings: AssistantSettings) {
     : settings;
 }
 
+function focusedContextMessage(): ConversationMessage | undefined {
+  const focusedSession = getFocusedBackgroundSession();
+  if (!focusedSession) return undefined;
+  return {
+    id: `focused-${focusedSession.id}`,
+    role: "assistant",
+    content: [
+      `Focused worker context: ${focusedSession.title} (${focusedSession.status}).`,
+      `Summary: ${focusedSession.report.summary || "No summary yet."}`,
+      `Changed: ${focusedSession.report.changed || "No changes reported."}`,
+      `Verified: ${focusedSession.report.verified || "No verification reported."}`,
+      `Blockers: ${focusedSession.report.blockers || "No blockers reported."}`,
+      `Next: ${focusedSession.report.next || "No next step reported."}`
+    ].join("\n"),
+    createdAt: new Date().toISOString()
+  };
+}
+
 async function withSavedAudioFile<T>(
   file: Express.Multer.File,
   callback: (input: { path: string; filename: string; mimeType: string; buffer: Buffer }) => Promise<T>
@@ -192,16 +215,24 @@ app.post("/api/text-turn", async (req, res) => {
     }
 
     const settings = normalizeSettings(body.settings);
+    const focusedContext = focusedContextMessage();
+    const plannerHistory = focusedContext
+      ? [...getPlannerContextMessages(), focusedContext]
+      : getPlannerContextMessages();
+    const textHistory = focusedContext
+      ? [...body.history.slice(-23), focusedContext]
+      : body.history.slice(-24);
     console.log(
       `[${new Date().toISOString()}] text-turn backend=${settings.backend} codexMode=${settings.codexMode}`
     );
 
     const result =
       settings.backend === "codex-cli"
-        ? await handlePlannerTurn(body.transcript, getPlannerContextMessages(), settings)
+        ? handleSessionCommand(body.transcript, plannerHistory, settings) ??
+          (await handlePlannerTurn(body.transcript, plannerHistory, settings))
         : await handleTextTurn(
             body.transcript,
-            body.history.slice(-24),
+            textHistory,
             settings,
             createAssistant(settings)
           );
@@ -283,6 +314,33 @@ app.post("/api/sessions/:id/cancel", (req, res) => {
   res.json({ cancelled });
 });
 
+app.post("/api/sessions/:id/focus", (req, res) => {
+  const session = focusBackgroundSession(req.params.id);
+  if (!session) {
+    res.status(404).json({ error: { code: "session_not_found", message: "Session not found." } });
+    return;
+  }
+  res.json({ session });
+});
+
+app.post("/api/sessions/:id/archive", (req, res) => {
+  const session = archiveBackgroundSession(req.params.id);
+  if (!session) {
+    res.status(404).json({ error: { code: "session_not_found", message: "Session not found." } });
+    return;
+  }
+  res.json({ session });
+});
+
+app.post("/api/sessions/:id/inspect", (req, res) => {
+  const inspection = inspectBackgroundSession(req.params.id);
+  if (!inspection) {
+    res.status(404).json({ error: { code: "session_not_found", message: "Session not found." } });
+    return;
+  }
+  res.json({ inspection });
+});
+
 app.post("/api/audio-text-turn", upload.single("audio"), async (req, res) => {
   try {
     if (!req.file) {
@@ -347,11 +405,13 @@ app.post("/api/audio-text-turn", upload.single("audio"), async (req, res) => {
         `[${new Date().toISOString()}] transcript chars=${transcript.length}; sending to ${settings.backend}`
       );
       if (settings.backend === "codex-cli") {
-        const plannerResult = await handlePlannerTurn(
-          transcript,
-          getPlannerContextMessages(),
-          settings
-        );
+        const focusedContext = focusedContextMessage();
+        const plannerHistory = focusedContext
+          ? [...getPlannerContextMessages(), focusedContext]
+          : getPlannerContextMessages();
+        const plannerResult =
+          handleSessionCommand(transcript, plannerHistory, settings) ??
+          (await handlePlannerTurn(transcript, plannerHistory, settings));
         const plannerSession = appendPlannerTurn(
           plannerResult.userMessage,
           plannerResult.assistantMessage

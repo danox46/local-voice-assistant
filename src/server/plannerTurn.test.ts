@@ -75,6 +75,40 @@ describe("handlePlannerTurn", () => {
     expect(result.assistantMessage.content).toContain("Workers:");
   });
 
+  it("asks structured planning questions before plan-mode delegation", async () => {
+    const { handlePlannerTurn } = await import("./plannerTurn");
+    const planSettings = { ...settings, codexMode: "plan" as const };
+
+    const result = await handlePlannerTurn("Build a voice UI plan for Codex sessions", [], planSettings);
+
+    expect(result.plannerPrompt?.status).toBe("needs-input");
+    expect(result.plannerPrompt?.questions.length).toBeGreaterThan(2);
+    expect(result.assistantMessage.content).toContain("Planning questions");
+    expect(result.spokenSummary).toContain("planning answers");
+  });
+
+  it("does not repeat planning questions after the user answers them", async () => {
+    const { handlePlannerTurn } = await import("./plannerTurn");
+    const planSettings = { ...settings, codexMode: "plan" as const };
+    const history = [
+      {
+        id: "assistant-questions",
+        role: "assistant" as const,
+        content: "Planning questions for: Build a voice UI plan",
+        createdAt: "2026-06-03T00:00:00.000Z"
+      }
+    ];
+
+    const result = await handlePlannerTurn(
+      "The goal is voice control for Codex. Scope should include planning, workers, and clear project visibility.",
+      history,
+      planSettings
+    );
+
+    expect(result.plannerPrompt).toBeUndefined();
+    expect(result.assistantMessage.content).toContain("my take");
+  });
+
   it("builds spoken summaries from the whole answer, not just the opening lines", async () => {
     const { spokenSummaryFrom } = await import("./plannerTurn");
     const answer = [

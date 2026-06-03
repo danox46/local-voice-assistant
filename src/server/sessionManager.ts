@@ -6,7 +6,9 @@ import type {
   BackgroundSession,
   BackgroundSessionMode,
   BackgroundSessionReport,
-  BackgroundSessionStatus
+  BackgroundSessionStatus,
+  SessionInspection,
+  SessionSupervision
 } from "../shared/types";
 import { config } from "./config";
 
@@ -14,6 +16,9 @@ interface RunningSession {
   child: ChildProcessWithoutNullStreams;
   outputFile: string;
   timeout: NodeJS.Timeout;
+  stdout: string;
+  stderr: string;
+  lastActivityAt: string;
 }
 
 interface CreateSessionInput {
@@ -24,6 +29,8 @@ interface CreateSessionInput {
 
 const sessions = new Map<string, BackgroundSession>();
 const runningSessions = new Map<string, RunningSession>();
+const STALE_SESSION_MS = 1000 * 60 * 8;
+let focusedSessionId: string | null = null;
 
 function codexCommand() {
   return process.platform === "win32" ? "codex.cmd" : "codex";
@@ -40,6 +47,150 @@ function emptyReport(): BackgroundSessionReport {
     verified: "",
     blockers: "",
     next: ""
+  };
+}
+
+function normalSupervision(reason = "Session is progressing normally."): SessionSupervision {
+  return {
+    level: "normal",
+    reason,
+    userNeeded: false,
+    shouldNotify: false,
+    checkedAt: new Date().toISOString()
+  };
+}
+
+export function classifySessionSupervision(
+  session: Pick<BackgroundSession, "status" | "startedAt" | "createdAt" | "report" | "error"> & {
+    lastActivityAt?: string;
+  },
+  now = new Date()
+): SessionSupervision {
+  const checkedAt = now.toISOString();
+  const blockers = session.report.blockers || "";
+  const next = session.report.next || "";
+  const combined = `${blockers} ${next} ${session.error ?? ""}`.toLowerCase();
+  const activityAt = new Date(session.lastActivityAt ?? session.startedAt ?? session.createdAt).getTime();
+  const quietMs = Number.isFinite(activityAt) ? now.getTime() - activityAt : 0;
+
+  if ((session.status === "running" || session.status === "queued") && quietMs > STALE_SESSION_MS) {
+    return {
+      level: "stale",
+      reason: "Session has been quiet longer than expected. Inspect logs before interrupting it.",
+      userNeeded: false,
+      shouldNotify: false,
+      checkedAt
+    };
+  }
+
+  if (session.status === "blocked" || session.status === "failed") {
+    const userNeededPattern =
+      /\b(user|owner|you|approval|approve|confirm|choose|decision|credential|login|permission|api key|secret|password|manual)\b/i;
+    if (userNeededPattern.test(combined)) {
+      return {
+        level: "needs-user",
+        reason: blockers || next || "The session needs a user decision or credential.",
+        userNeeded: true,
+        shouldNotify: true,
+        checkedAt
+      };
+    }
+
+    return {
+      level: "auto-actionable",
+      reason: blockers || next || "The session is blocked, but it appears actionable by the agent.",
+      userNeeded: false,
+      shouldNotify: false,
+      checkedAt
+    };
+  }
+
+  if (session.status === "done") {
+    return normalSupervision("Session finished without requiring user action.");
+  }
+
+  if (session.status === "cancelled") {
+    return normalSupervision("Session was cancelled.");
+  }
+
+  return normalSupervision();
+}
+
+function withSupervision(session: BackgroundSession) {
+  const running = runningSessions.get(session.id);
+  return {
+    ...session,
+    focused: session.id === focusedSessionId,
+    supervision: classifySessionSupervision({
+      ...session,
+      lastActivityAt: running?.lastActivityAt
+    })
+  };
+}
+
+function tailText(text: string, maxLength = 1200) {
+  const clean = text.trim();
+  return clean.length > maxLength ? clean.slice(clean.length - maxLength) : clean;
+}
+
+export function inspectBackgroundSession(id: string): SessionInspection | undefined {
+  const session = getBackgroundSession(id);
+  if (!session) return undefined;
+  const running = runningSessions.get(id);
+  const output = tailText([running?.stdout, running?.stderr, session.rawOutput, session.error]
+    .filter(Boolean)
+    .join("\n"));
+  const lower = output.toLowerCase();
+  const inspectedAt = new Date().toISOString();
+  const userNeededPattern =
+    /\b(approval|approve|confirm|choose|credential|login|permission|api key|secret|password|manual|user input)\b/i;
+  const issuePattern =
+    /\b(error|exception|failed|denied|timeout|timed out|cannot|can't|missing|not found|permission|unauthorized|conflict)\b/i;
+
+  if (session.supervision.userNeeded || userNeededPattern.test(output)) {
+    return {
+      sessionId: id,
+      issueFound: true,
+      userNeeded: true,
+      severity: "critical",
+      summary: session.supervision.reason || "The session appears to need user input.",
+      evidence: output || session.report.blockers || session.report.next,
+      inspectedAt
+    };
+  }
+
+  if (session.supervision.level === "auto-actionable" || issuePattern.test(lower)) {
+    return {
+      sessionId: id,
+      issueFound: true,
+      userNeeded: false,
+      severity: "warning",
+      summary: session.supervision.reason || "The session has an issue the agent can likely handle.",
+      evidence: output || session.report.blockers || session.report.next,
+      inspectedAt
+    };
+  }
+
+  if (session.supervision.level === "stale") {
+    return {
+      sessionId: id,
+      issueFound: false,
+      userNeeded: false,
+      severity: "info",
+      summary: "The session is quiet, but no concrete issue was found in the available output.",
+      evidence: output || "No output captured yet.",
+      inspectedAt
+    };
+  }
+
+  return {
+    sessionId: id,
+    issueFound: false,
+    userNeeded: false,
+    severity: "none",
+    summary: "No issue found.",
+    evidence: output || session.report.summary || "No output captured yet.",
+    inspectedAt
   };
 }
 
@@ -157,7 +308,8 @@ function finishSession(id: string, patch: Partial<BackgroundSession>) {
     ...session,
     ...patch,
     finishedAt: patch.finishedAt ?? new Date().toISOString()
-  };
+  } as BackgroundSession;
+  next.supervision = classifySessionSupervision(next);
   sessions.set(id, next);
   runningSessions.delete(id);
   void writeReport(next).catch((error) => {
@@ -166,11 +318,23 @@ function finishSession(id: string, patch: Partial<BackgroundSession>) {
 }
 
 export function listBackgroundSessions() {
-  return [...sessions.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const nextSessions = [...sessions.values()].map(withSupervision);
+  for (const session of nextSessions) {
+    sessions.set(session.id, session);
+  }
+  return nextSessions.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export function getBackgroundSession(id: string) {
-  return sessions.get(id);
+  const session = sessions.get(id);
+  if (!session) return undefined;
+  const supervised = withSupervision(session);
+  sessions.set(id, supervised);
+  return supervised;
+}
+
+export function getFocusedBackgroundSession() {
+  return focusedSessionId ? getBackgroundSession(focusedSessionId) : undefined;
 }
 
 export function createBackgroundSession(input: CreateSessionInput) {
@@ -182,6 +346,8 @@ export function createBackgroundSession(input: CreateSessionInput) {
     status: "queued",
     mode: input.mode,
     prompt: input.prompt.trim(),
+    supervision: normalSupervision("Session is queued."),
+    focused: false,
     createdAt: now,
     report: emptyReport()
   };
@@ -231,18 +397,39 @@ function startSession(session: BackgroundSession) {
     });
   }, 1000 * 60 * 12);
 
-  runningSessions.set(session.id, { child, outputFile, timeout });
+  runningSessions.set(session.id, {
+    child,
+    outputFile,
+    timeout,
+    stdout: "",
+    stderr: "",
+    lastActivityAt: new Date().toISOString()
+  });
   sessions.set(session.id, {
     ...session,
+    supervision: normalSupervision("Session is running."),
+    focused: session.id === focusedSessionId,
     status: "running",
     startedAt: new Date().toISOString()
   });
 
   child.stdout.on("data", (chunk: Buffer) => {
-    stdout += chunk.toString("utf8");
+    const text = chunk.toString("utf8");
+    stdout += text;
+    const running = runningSessions.get(session.id);
+    if (running) {
+      running.stdout += text;
+      running.lastActivityAt = new Date().toISOString();
+    }
   });
   child.stderr.on("data", (chunk: Buffer) => {
-    stderr += chunk.toString("utf8");
+    const text = chunk.toString("utf8");
+    stderr += text;
+    const running = runningSessions.get(session.id);
+    if (running) {
+      running.stderr += text;
+      running.lastActivityAt = new Date().toISOString();
+    }
   });
   child.on("error", (error) => {
     clearTimeout(timeout);
@@ -292,4 +479,25 @@ export function cancelBackgroundSession(id: string) {
     }
   });
   return true;
+}
+
+export function focusBackgroundSession(id: string) {
+  const session = sessions.get(id);
+  if (!session) return undefined;
+  focusedSessionId = id;
+  const focused = withSupervision(session);
+  sessions.set(id, focused);
+  return focused;
+}
+
+export function archiveBackgroundSession(id: string) {
+  const session = sessions.get(id);
+  if (!session) return undefined;
+  if (focusedSessionId === id) focusedSessionId = null;
+  const archived = withSupervision({
+    ...session,
+    archivedAt: new Date().toISOString()
+  });
+  sessions.set(id, archived);
+  return archived;
 }

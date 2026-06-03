@@ -91,6 +91,7 @@ interface SpeechRecognitionErrorEventLike extends Event {
 export interface SpeechRecognizerCallbacks {
   onTranscript?: (transcript: string) => void;
   onError?: (message: string) => void;
+  onEnd?: () => void;
   language?: string;
 }
 
@@ -166,6 +167,11 @@ export class PushToTalkSpeechRecognizer {
           ? `Speech recognition error: ${event.error}.`
           : event.message || "Speech recognition stopped without a transcript."
       );
+    };
+    this.recognition.onend = () => {
+      if (!this.started) return;
+      this.started = false;
+      callbacks.onEnd?.();
     };
     this.recognition.start();
   }

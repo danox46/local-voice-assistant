@@ -29,6 +29,19 @@ export interface AssistantSettings {
   summaryWords: number;
 }
 
+export interface PlannerQuestion {
+  id: string;
+  label: string;
+  question: string;
+  why: string;
+}
+
+export interface PlannerPrompt {
+  topic: string;
+  status: "needs-input";
+  questions: PlannerQuestion[];
+}
+
 export interface VoiceTurnResponse {
   userMessage: ConversationMessage;
   assistantMessage: ConversationMessage;
@@ -37,6 +50,7 @@ export interface VoiceTurnResponse {
   audioBase64: string;
   settings: AssistantSettings;
   plannerSession?: PlannerSession;
+  plannerPrompt?: PlannerPrompt;
 }
 
 export interface TextTurnResponse {
@@ -45,6 +59,7 @@ export interface TextTurnResponse {
   spokenSummary: string;
   settings: AssistantSettings;
   plannerSession?: PlannerSession;
+  plannerPrompt?: PlannerPrompt;
 }
 
 export interface ApiErrorResponse {
@@ -65,6 +80,26 @@ export interface BackgroundSessionReport {
   next: string;
 }
 
+export type SessionSupervisionLevel = "normal" | "stale" | "needs-user" | "auto-actionable";
+
+export interface SessionSupervision {
+  level: SessionSupervisionLevel;
+  reason: string;
+  userNeeded: boolean;
+  shouldNotify: boolean;
+  checkedAt: string;
+}
+
+export interface SessionInspection {
+  sessionId: string;
+  issueFound: boolean;
+  userNeeded: boolean;
+  severity: "none" | "info" | "warning" | "critical";
+  summary: string;
+  evidence: string;
+  inspectedAt: string;
+}
+
 export interface BackgroundSession {
   id: string;
   title: string;
@@ -75,6 +110,9 @@ export interface BackgroundSession {
   startedAt?: string;
   finishedAt?: string;
   report: BackgroundSessionReport;
+  supervision: SessionSupervision;
+  focused: boolean;
+  archivedAt?: string;
   rawOutput?: string;
   error?: string;
 }

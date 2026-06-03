@@ -271,6 +271,29 @@ h2 {
   text-align: center;
 }
 
+.wake-hint {
+  margin: -4px 0 0;
+  min-height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  padding: 7px 12px;
+  color: rgba(255, 255, 255, 0.84);
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 0.88rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.wake-hint.listening {
+  border-color: rgba(159, 226, 154, 0.52);
+  background: rgba(159, 226, 154, 0.14);
+}
+
+.wake-hint.error {
+  border-color: rgba(255, 137, 111, 0.5);
+  background: rgba(255, 137, 111, 0.14);
+}
+
 .danger-button {
   min-height: 40px;
   border: 1px solid rgba(255, 255, 255, 0.58);
@@ -309,6 +332,12 @@ h2 {
   border-radius: 5px;
   background: #e9efe5;
   color: #23342c;
+}
+
+.focused-note {
+  border-color: #9bc5af;
+  color: #264a3d;
+  background: #eff8f1;
 }
 
 .panes {
@@ -397,6 +426,10 @@ h2 {
   min-height: 0;
 }
 
+.planner-panel {
+  min-height: 0;
+}
+
 .command-heading {
   justify-content: space-between;
   align-items: flex-start;
@@ -407,6 +440,42 @@ h2 {
   color: #65776e;
   font-size: 0.88rem;
   font-weight: 700;
+}
+
+.planner-question-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.planner-question {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  padding: 12px;
+  border: 1px solid #d8ded4;
+  border-radius: 8px;
+  background: #fbfcf8;
+}
+
+.planner-question span {
+  color: #2f6f5e;
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.planner-question p {
+  margin: 0;
+  color: #26362f;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.planner-question small {
+  color: #5d7066;
+  line-height: 1.4;
 }
 
 .session-grid {
@@ -444,6 +513,16 @@ h2 {
 
 .session-card.cancelled {
   opacity: 0.72;
+}
+
+.session-card.focused {
+  border-color: #9bc5af;
+  border-left-color: #1f7d61;
+  box-shadow: 0 16px 34px rgba(31, 125, 97, 0.14);
+}
+
+.session-card.archived {
+  opacity: 0.62;
 }
 
 .session-card-top {
@@ -492,6 +571,36 @@ h2 {
 .session-next {
   color: #596960 !important;
   font-size: 0.9rem;
+}
+
+.session-supervision {
+  border-radius: 8px;
+  padding: 9px 10px;
+  font-size: 0.88rem;
+}
+
+.session-supervision.needs-user {
+  color: #6e2615 !important;
+  background: #fff0ea;
+  font-weight: 800;
+}
+
+.session-supervision.auto-actionable {
+  color: #4f4323 !important;
+  background: #fff7d9;
+}
+
+.session-supervision.stale {
+  color: #42564d !important;
+  background: #edf2eb;
+}
+
+.session-inspection {
+  border-radius: 8px;
+  padding: 9px 10px;
+  color: #3f584e !important;
+  background: #eef5ee;
+  font-size: 0.88rem;
 }
 
 .session-actions {
@@ -564,6 +673,18 @@ label {
   color: #42564d;
   font-size: 0.88rem;
   font-weight: 800;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.checkbox-label input {
+  width: 18px;
+  height: 18px;
+  accent-color: #2f6f5e;
 }
 
 input,

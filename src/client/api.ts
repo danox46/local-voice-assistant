@@ -5,6 +5,7 @@ import type {
   BackgroundSessionMode,
   ConversationMessage,
   PlannerSession,
+  SessionInspection,
   TextTurnResponse,
   VoiceTurnResponse
 } from "../shared/types";
@@ -154,4 +155,31 @@ export async function cancelSession(id: string) {
   });
   if (!response.ok) throw new Error(await parseApiError(response));
   return (await response.json()) as { cancelled: boolean };
+}
+
+export async function focusSession(id: string): Promise<BackgroundSession> {
+  const response = await fetch(`${API_BASE_URL}/api/sessions/${id}/focus`, {
+    method: "POST"
+  });
+  if (!response.ok) throw new Error(await parseApiError(response));
+  const body = (await response.json()) as { session: BackgroundSession };
+  return body.session;
+}
+
+export async function archiveSession(id: string): Promise<BackgroundSession> {
+  const response = await fetch(`${API_BASE_URL}/api/sessions/${id}/archive`, {
+    method: "POST"
+  });
+  if (!response.ok) throw new Error(await parseApiError(response));
+  const body = (await response.json()) as { session: BackgroundSession };
+  return body.session;
+}
+
+export async function inspectSession(id: string): Promise<SessionInspection> {
+  const response = await fetch(`${API_BASE_URL}/api/sessions/${id}/inspect`, {
+    method: "POST"
+  });
+  if (!response.ok) throw new Error(await parseApiError(response));
+  const body = (await response.json()) as { inspection: SessionInspection };
+  return body.inspection;
 }
