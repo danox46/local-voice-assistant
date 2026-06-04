@@ -11,6 +11,11 @@ export const voiceCommandCatalog: VoiceCommandExample[] = [
     description: "Wake the app and start listening when the wake phrase is enabled."
   },
   {
+    category: "audio",
+    phrase: "repeat last response",
+    description: "Replay the latest spoken summary without sending a new planner turn."
+  },
+  {
     category: "planning",
     phrase: "start a new chat",
     description: "Clear the main planning conversation while keeping worker history."
@@ -90,4 +95,17 @@ export function isRetryLastTurnCommand(transcript: string) {
     /\b(retry|redo|rerun|regenerate)\b/.test(clean) &&
     /\b(last|previous|prior|that|answer|response|turn|message)\b/.test(clean)
   ) || /\btry (that|it|this) again\b/.test(clean);
+}
+
+export function isRepeatLastResponseCommand(transcript: string) {
+  const clean = transcript
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!clean) return false;
+  return (
+    /\b(repeat|replay|read|say|play)\b/.test(clean) &&
+    /\b(last|previous|that|answer|response|summary|message)\b/.test(clean)
+  ) || /\b(say|read|play) that again\b/.test(clean);
 }

@@ -23,7 +23,11 @@ import type {
   TextTurnResponse,
   VoiceTurnResponse
 } from "../shared/types";
-import { isRetryLastTurnCommand, voiceCommandCatalog } from "../shared/voiceCommandCatalog";
+import {
+  isRepeatLastResponseCommand,
+  isRetryLastTurnCommand,
+  voiceCommandCatalog
+} from "../shared/voiceCommandCatalog";
 import {
   archiveSession,
   cancelSession,
@@ -581,6 +585,24 @@ export function App() {
     playNextBrowserSummary();
   }
 
+  function repeatLastResponse() {
+    const summary = spokenSummary.trim() || lastAssistantMessage?.content.trim() || "";
+    if (!summary) {
+      setError("There is no response to repeat yet.");
+      setUiState("error");
+      return;
+    }
+    setError("");
+    if (settings.backend === "gemini-cli" || settings.backend === "codex-cli" || !audioUrl) {
+      enqueueBrowserSummary(summary, { replace: true });
+      return;
+    }
+    if (!audioRef.current) return;
+    setUiState("speaking");
+    audioRef.current.currentTime = 0;
+    void audioRef.current.play();
+  }
+
   function clearBrowserPlaybackQueue() {
     speechQueueRef.current = [];
     speechActiveRef.current = false;
@@ -817,6 +839,11 @@ export function App() {
             "I did not catch any words from browser speech recognition. Try Gemini audio transcription in settings, or use the typed fallback below."
           );
         }
+        if (isRepeatLastResponseCommand(transcript)) {
+          setLiveTranscript(transcript);
+          repeatLastResponse();
+          return;
+        }
         if (settings.backend === "codex-cli" && isRetryLastTurnCommand(transcript)) {
           await retryLastTurn(transcript);
           return;
@@ -919,6 +946,13 @@ export function App() {
     const transcript = typedPrompt.trim();
     if (!transcript) return;
 
+    if (isRepeatLastResponseCommand(transcript)) {
+      updateTypedPrompt("");
+      setLiveTranscript(transcript);
+      repeatLastResponse();
+      return;
+    }
+
     if (settings.backend === "codex-cli" && isRetryLastTurnCommand(transcript)) {
       updateTypedPrompt("");
       await retryLastTurn(transcript);
@@ -999,14 +1033,7 @@ export function App() {
   }
 
   function replayAudio() {
-    if ((settings.backend === "gemini-cli" || settings.backend === "codex-cli") && spokenSummary) {
-      enqueueBrowserSummary(spokenSummary, { replace: true });
-      return;
-    }
-    if (!audioRef.current) return;
-    setUiState("speaking");
-    audioRef.current.currentTime = 0;
-    void audioRef.current.play();
+    repeatLastResponse();
   }
 
   function stopAudio() {

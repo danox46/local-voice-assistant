@@ -30,6 +30,7 @@ describe("App", () => {
   beforeEach(() => {
     cleanup();
     window.localStorage.clear();
+    vi.clearAllMocks();
     vi.mocked(api.getHealth).mockResolvedValue({
       ok: true,
       hasOpenAiKey: true,
@@ -230,6 +231,66 @@ describe("App", () => {
 
     await waitFor(() => expect(api.retryLastTextTurn).toHaveBeenCalled());
     expect(api.sendTextTurn).not.toHaveBeenCalled();
+  });
+
+  it("replays the latest response from a typed repeat command without sending a turn", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.getPlannerSession).mockResolvedValueOnce({
+      id: "main",
+      title: "Main planning session",
+      createdAt: "2026-06-02T00:00:00.000Z",
+      updatedAt: "2026-06-02T00:00:30.000Z",
+      messages: [
+        {
+          id: "user-1",
+          role: "user",
+          content: "Plan it.",
+          createdAt: "2026-06-02T00:00:00.000Z"
+        },
+        {
+          id: "assistant-1",
+          role: "assistant",
+          content: "Latest useful answer.",
+          createdAt: "2026-06-02T00:00:30.000Z"
+        }
+      ]
+    });
+    Object.defineProperty(window, "speechSynthesis", {
+      configurable: true,
+      value: {
+        cancel: vi.fn(),
+        speak: vi.fn()
+      }
+    });
+    vi.stubGlobal(
+      "SpeechSynthesisUtterance",
+      class {
+        text: string;
+        volume = 1;
+        rate = 1;
+        onend: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+
+        constructor(text: string) {
+          this.text = text;
+        }
+      }
+    );
+    const speak = vi
+      .spyOn(window.speechSynthesis, "speak")
+      .mockImplementation(() => undefined);
+
+    render(<App />);
+
+    await screen.findByText("Latest useful answer.");
+    await user.type(screen.getAllByLabelText("Type instead")[0], "repeat last response");
+    await user.click(screen.getByRole("button", { name: "Send to Codex" }));
+
+    await waitFor(() => expect(speak).toHaveBeenCalled());
+    expect(api.sendTextTurn).not.toHaveBeenCalled();
+    expect(api.retryLastTextTurn).not.toHaveBeenCalled();
+
+    speak.mockRestore();
   });
 
   it("shows the setup message when Codex CLI is missing", async () => {

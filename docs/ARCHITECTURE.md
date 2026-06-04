@@ -25,6 +25,8 @@ The React app handles microphone permission, push-to-talk controls, wake phrase 
 
 Spoken notifications pass through a playback queue. Long summaries are split into short chunks to avoid browser `SpeechSynthesisUtterance` cutoffs and overlapping worker notifications.
 
+Local playback commands such as `repeat last response` are intercepted in the client before a turn is sent to the API. They replay the latest spoken summary or response text through the same queue, preserving planner memory.
+
 Settings are initialized from the server defaults and then merged with validated browser `localStorage` preferences. This keeps user choices such as backend, Codex plan/execute mode, transcription mode, assistant style, wake phrase, mute, and volume stable across page refreshes without trusting malformed saved values.
 
 The visible command examples in Settings and the spoken "what can I say" response both read from `shared/voiceCommandCatalog.ts`, keeping discoverability aligned with the command router. Settings examples are clickable quick-fill prompts for the typed fallback composer.
