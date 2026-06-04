@@ -7,7 +7,7 @@ Local Voice Assistant is a local web app for talking to a planning agent, keepin
 - Push-to-talk browser UI with live microphone activity.
 - Optional wake phrase listener: say `Tensoon` while the app is idle to start a command.
 - Browser speech recognition with typed fallback.
-- Server-side planner context that survives refreshes and failed turns.
+- Server-side planner context and active planning questions that survive refreshes and failed turns.
 - Planner answers that include current worker and Activity context in Codex mode.
 - Retry-last-turn control that removes the latest saved planner turn before resending.
 - Repeat-last-response command that replays the latest summary without sending a new turn.
@@ -32,7 +32,7 @@ Worker modes:
 - `execute`: workers may edit files in `CODEX_WORKDIR`
 - `plan`: workers inspect and plan without editing
 
-When Codex mode is set to `plan`, the main agent can pause before delegation and ask structured planning questions. Those questions appear in the app as a planning panel and remain answerable by voice or typed fallback.
+When Codex mode is set to `plan`, the main agent can pause before delegation and ask structured planning questions. Those questions appear in the app as a planning panel, survive refreshes, and remain answerable by voice or typed fallback.
 
 In Codex mode, the planner receives a compact operational snapshot on every turn: visible workers, supervision state, and recent Activity. That lets status questions and follow-up planning use the current project state instead of relying only on remembered chat text.
 
@@ -101,6 +101,7 @@ Complete the browser login, then restart the app.
 The app writes runtime state to `work/`, including:
 
 - planner session memory
+- active planning questions
 - recent activity timeline
 - temporary audio files
 - Codex run output
@@ -109,6 +110,8 @@ The app writes runtime state to `work/`, including:
 Completed, blocked, failed, and cancelled worker cards are restored from saved reports after a server restart. Running processes are not resumed; start a follow-up worker when a restarted session needs more work.
 
 The browser stores local UI preferences such as backend, Codex plan/execute mode, transcription mode, assistant style, wake phrase, mute, and volume. Server defaults from `.env` are used first, then valid browser preferences are applied on top.
+
+Markdown transcript export includes both the saved conversation and any active planning questions still waiting for answers.
 
 The typed fallback composer also keeps an unsent local draft across refreshes. Use **Clear draft** to discard it.
 

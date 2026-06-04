@@ -13,6 +13,7 @@ export interface PlannerSession {
   createdAt: string;
   updatedAt: string;
   messages: ConversationMessage[];
+  activePlannerPrompt?: PlannerPrompt;
   lastError?: string;
 }
 

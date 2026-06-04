@@ -156,7 +156,11 @@ async function runCodexPlannerTextTurn(
   const result =
     handleSessionCommand(transcript, plannerHistory, settings) ??
     (await handlePlannerTurn(transcript, plannerHistory, settings));
-  const plannerSession = appendPlannerTurn(result.userMessage, result.assistantMessage);
+  const plannerSession = appendPlannerTurn(
+    result.userMessage,
+    result.assistantMessage,
+    result.plannerPrompt
+  );
   return { ...result, plannerSession };
 }
 

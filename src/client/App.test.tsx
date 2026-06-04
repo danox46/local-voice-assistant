@@ -106,6 +106,34 @@ describe("App", () => {
     expect(screen.getAllByLabelText("Type instead")[0]).toHaveValue("focus the latest worker");
   });
 
+  it("restores active planning questions from the saved planner session", async () => {
+    vi.mocked(api.getPlannerSession).mockResolvedValueOnce({
+      id: "main",
+      title: "Main planning session",
+      createdAt: "2026-06-02T00:00:00.000Z",
+      updatedAt: "2026-06-02T00:00:30.000Z",
+      messages: [],
+      activePlannerPrompt: {
+        topic: "Voice cockpit plan",
+        status: "needs-input",
+        questions: [
+          {
+            id: "goal",
+            label: "Goal",
+            question: "What should this accomplish?",
+            why: "The planner needs a target."
+          }
+        ]
+      }
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText("Planning Questions")).toBeInTheDocument();
+    expect(screen.getByText("Voice cockpit plan")).toBeInTheDocument();
+    expect(screen.getByText("What should this accomplish?")).toBeInTheDocument();
+  });
+
   it("exports the planner transcript from the toolbar", async () => {
     const user = userEvent.setup();
     const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:planner");

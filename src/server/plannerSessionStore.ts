@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import type { ConversationMessage, PlannerSession } from "../shared/types";
+import type { ConversationMessage, PlannerPrompt, PlannerSession } from "../shared/types";
 
 const MAX_STORED_MESSAGES = 160;
 const MAX_CONTEXT_MESSAGES = 36;
@@ -44,7 +44,31 @@ function normalizeSession(session: PlannerSession): PlannerSession {
     title: session.title || SESSION_TITLE,
     createdAt: session.createdAt || now(),
     updatedAt: session.updatedAt || now(),
-    messages: Array.isArray(session.messages) ? session.messages.slice(-MAX_STORED_MESSAGES) : []
+    messages: Array.isArray(session.messages) ? session.messages.slice(-MAX_STORED_MESSAGES) : [],
+    activePlannerPrompt: normalizePlannerPrompt(session.activePlannerPrompt)
+  };
+}
+
+function normalizePlannerPrompt(prompt: unknown): PlannerPrompt | undefined {
+  if (!prompt || typeof prompt !== "object") return undefined;
+  const candidate = prompt as Partial<PlannerPrompt>;
+  if (
+    typeof candidate.topic !== "string" ||
+    candidate.status !== "needs-input" ||
+    !Array.isArray(candidate.questions)
+  ) {
+    return undefined;
+  }
+  const questions = candidate.questions.filter((question) => {
+    if (!question || typeof question !== "object") return false;
+    const item = question as Partial<PlannerPrompt["questions"][number]>;
+    return Boolean(item.id && item.label && item.question && item.why);
+  }) as PlannerPrompt["questions"];
+  if (!questions.length) return undefined;
+  return {
+    topic: candidate.topic,
+    status: "needs-input",
+    questions
   };
 }
 
@@ -93,6 +117,22 @@ export function formatPlannerSessionMarkdown(session = readSession()) {
         ].join("\n")
       )
     : ["_No saved messages yet._"];
+  const activePrompt = session.activePlannerPrompt
+    ? [
+        "## Active Planning Questions",
+        "",
+        `Topic: ${session.activePlannerPrompt.topic}`,
+        "",
+        ...session.activePlannerPrompt.questions.map((question, index) =>
+          [
+            `${index + 1}. ${question.question}`,
+            `   - Label: ${question.label}`,
+            `   - Why: ${question.why}`
+          ].join("\n")
+        ),
+        ""
+      ]
+    : [];
 
   return [
     `# ${session.title}`,
@@ -101,20 +141,31 @@ export function formatPlannerSessionMarkdown(session = readSession()) {
     `Created: ${session.createdAt}`,
     `Updated: ${session.updatedAt}`,
     "",
+    ...activePrompt,
     ...messages
   ].join("\n");
 }
 
-export function appendPlannerTurn(
+export function appendPlannerTurnToSession(
+  session: PlannerSession,
   userMessage: ConversationMessage,
-  assistantMessage: ConversationMessage
+  assistantMessage: ConversationMessage,
+  plannerPrompt?: PlannerPrompt
 ) {
-  const session = readSession();
-  return writeSession({
+  return {
     ...session,
     lastError: undefined,
+    activePlannerPrompt: plannerPrompt,
     messages: [...session.messages, userMessage, assistantMessage].slice(-MAX_STORED_MESSAGES)
-  });
+  };
+}
+
+export function appendPlannerTurn(
+  userMessage: ConversationMessage,
+  assistantMessage: ConversationMessage,
+  plannerPrompt?: PlannerPrompt
+) {
+  return writeSession(appendPlannerTurnToSession(readSession(), userMessage, assistantMessage, plannerPrompt));
 }
 
 export function removeLastPlannerTurnFromSession(session: PlannerSession): PlannerSession {
@@ -127,6 +178,7 @@ export function removeLastPlannerTurnFromSession(session: PlannerSession): Plann
   }
   return {
     ...session,
+    activePlannerPrompt: undefined,
     lastError: undefined,
     messages
   };
@@ -145,6 +197,7 @@ export function recordPlannerFailure(transcript: string, errorMessage: string) {
   );
   return writeSession({
     ...session,
+    activePlannerPrompt: undefined,
     lastError: errorMessage,
     messages: [...session.messages, userMessage, assistantMessage].slice(-MAX_STORED_MESSAGES)
   });

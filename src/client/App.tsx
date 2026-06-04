@@ -656,10 +656,10 @@ export function App() {
   useEffect(() => {
     getHealth()
       .then(async (health) => {
-      const storedSettings = loadStoredSettings(health.settings);
-      const storedPrefs = loadStoredUiPrefs();
-      setSettings(storedSettings);
-      setMuted(storedPrefs.muted);
+        const storedSettings = loadStoredSettings(health.settings);
+        const storedPrefs = loadStoredUiPrefs();
+        setSettings(storedSettings);
+        setMuted(storedPrefs.muted);
         setVolume(storedPrefs.volume);
         setWakeEnabled(storedPrefs.wakeEnabled);
         setTypedPrompt(loadTypedDraft());
@@ -668,6 +668,7 @@ export function App() {
         setHasCodexCli(health.hasCodexCli);
         const plannerSession = await getPlannerSession();
         setMessages(plannerSession.messages);
+        setPlannerPrompt(plannerSession.activePlannerPrompt ?? null);
         if (plannerSession.lastError) {
           setError(plannerSession.lastError);
         }
