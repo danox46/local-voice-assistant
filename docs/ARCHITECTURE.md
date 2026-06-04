@@ -75,11 +75,11 @@ Planner conversation and the active planning prompt are persisted in `work/plann
 
 Every Codex planner turn also receives a compact operational context built from the current worker list and recent Activity events. This keeps conversational answers grounded in the live command-center state, including supervision labels and recent inspections, without stuffing raw logs into the chat.
 
-The planner transcript can be exported as markdown through `GET /api/planner-session/export`, and the client toolbar downloads that file as `planner-session.md`. The export includes active planning questions when a prompt is still waiting for answers.
+The planner transcript can be exported as markdown through `GET /api/planner-session/export`, and the client toolbar downloads that file as `planner-session.md`. The export includes active planning questions and their answered/pending state when a prompt is still waiting for answers.
 
 The retry-last-turn flow calls `POST /api/text-turn/retry-last` for the full rerun, or `POST /api/planner-session/retry-last` when only the saved planner memory needs to be trimmed. The server removes the latest user/assistant pair from persisted planner memory, preserves earlier context, and reruns the previous user request. Transcribed Codex turns that match phrases such as `retry last turn` use the same server-side path.
 
-Planning questions are returned as a `plannerPrompt` payload from `POST /api/text-turn` or `POST /api/audio-text-turn`. The server stores that prompt as `activePlannerPrompt` on the planner session, and clears it on the next turn that does not ask follow-up questions. The client restores the planning panel from `GET /api/planner-session` after refresh and keeps normal voice/text entry available for answers.
+Planning questions are returned as a `plannerPrompt` payload from `POST /api/text-turn` or `POST /api/audio-text-turn`. The server stores that prompt as `activePlannerPrompt` on the planner session, tracks per-question answered state, and clears it on the next turn that does not ask follow-up questions. The client restores the planning panel from `GET /api/planner-session` after refresh and keeps normal voice/text entry available for answers.
 
 The session command router handles narrow operational phrases such as switching Codex plan/execute mode, reporting the current mode, starting a fresh planning chat, recapping the saved planning session, focusing the latest worker, inspecting the current worker, continuing the focused session, continuing agent-actionable blockers, cancelling a current worker, and archiving completed workers. Unrecognized or conversational turns fall through to the main planner so brainstorming is not swallowed by command matching.
 

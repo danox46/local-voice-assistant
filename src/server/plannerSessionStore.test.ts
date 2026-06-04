@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   appendPlannerTurnToSession,
   formatPlannerSessionMarkdown,
-  removeLastPlannerTurnFromSession
+  removeLastPlannerTurnFromSession,
+  updateActivePlannerQuestionInSession
 } from "./plannerSessionStore";
 
 describe("formatPlannerSessionMarkdown", () => {
@@ -157,5 +158,33 @@ describe("formatPlannerSessionMarkdown", () => {
     );
 
     expect(answered.activePlannerPrompt).toBeUndefined();
+  });
+
+  it("marks active planner questions answered or pending", () => {
+    const session = {
+      id: "main",
+      title: "Main planning session",
+      createdAt: "2026-06-03T10:00:00.000Z",
+      updatedAt: "2026-06-03T10:00:00.000Z",
+      messages: [],
+      activePlannerPrompt: {
+        topic: "Voice UI plan",
+        status: "needs-input" as const,
+        questions: [
+          {
+            id: "goal",
+            label: "Goal",
+            question: "What should this accomplish?",
+            why: "The planner needs a target."
+          }
+        ]
+      }
+    };
+
+    const answered = updateActivePlannerQuestionInSession(session, "goal", true);
+    const pending = updateActivePlannerQuestionInSession(answered, "goal", false);
+
+    expect(answered.activePlannerPrompt?.questions[0].answeredAt).toBeTruthy();
+    expect(pending.activePlannerPrompt?.questions[0].answeredAt).toBeUndefined();
   });
 });

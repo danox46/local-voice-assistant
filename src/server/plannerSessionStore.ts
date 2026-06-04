@@ -63,6 +63,15 @@ function normalizePlannerPrompt(prompt: unknown): PlannerPrompt | undefined {
     if (!question || typeof question !== "object") return false;
     const item = question as Partial<PlannerPrompt["questions"][number]>;
     return Boolean(item.id && item.label && item.question && item.why);
+  }).map((question) => {
+    const item = question as PlannerPrompt["questions"][number];
+    return {
+      id: item.id,
+      label: item.label,
+      question: item.question,
+      why: item.why,
+      answeredAt: typeof item.answeredAt === "string" ? item.answeredAt : undefined
+    };
   }) as PlannerPrompt["questions"];
   if (!questions.length) return undefined;
   return {
@@ -125,7 +134,7 @@ export function formatPlannerSessionMarkdown(session = readSession()) {
         "",
         ...session.activePlannerPrompt.questions.map((question, index) =>
           [
-            `${index + 1}. ${question.question}`,
+            `${index + 1}. ${question.question}${question.answeredAt ? " [answered]" : ""}`,
             `   - Label: ${question.label}`,
             `   - Why: ${question.why}`
           ].join("\n")
@@ -186,6 +195,34 @@ export function removeLastPlannerTurnFromSession(session: PlannerSession): Plann
 
 export function retryLastPlannerTurn() {
   return writeSession(removeLastPlannerTurnFromSession(readSession()));
+}
+
+export function updateActivePlannerQuestionInSession(
+  session: PlannerSession,
+  questionId: string,
+  answered: boolean
+): PlannerSession {
+  const prompt = session.activePlannerPrompt;
+  if (!prompt) return session;
+  const nextPrompt: PlannerPrompt = {
+    ...prompt,
+    questions: prompt.questions.map((question) =>
+      question.id === questionId
+        ? {
+            ...question,
+            answeredAt: answered ? now() : undefined
+          }
+        : question
+    )
+  };
+  return {
+    ...session,
+    activePlannerPrompt: nextPrompt
+  };
+}
+
+export function updateActivePlannerQuestion(questionId: string, answered: boolean) {
+  return writeSession(updateActivePlannerQuestionInSession(readSession(), questionId, answered));
 }
 
 export function recordPlannerFailure(transcript: string, errorMessage: string) {

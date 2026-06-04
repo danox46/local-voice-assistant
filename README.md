@@ -32,7 +32,7 @@ Worker modes:
 - `execute`: workers may edit files in `CODEX_WORKDIR`
 - `plan`: workers inspect and plan without editing
 
-When Codex mode is set to `plan`, the main agent can pause before delegation and ask structured planning questions. Those questions appear in the app as a planning panel, survive refreshes, and remain answerable by voice or typed fallback.
+When Codex mode is set to `plan`, the main agent can pause before delegation and ask structured planning questions. Those questions appear in the app as a planning panel, survive refreshes, and remain answerable by voice or typed fallback. You can also mark questions answered or pending so the panel works like a small planning checklist.
 
 In Codex mode, the planner receives a compact operational snapshot on every turn: visible workers, supervision state, and recent Activity. That lets status questions and follow-up planning use the current project state instead of relying only on remembered chat text.
 
@@ -111,7 +111,7 @@ Completed, blocked, failed, and cancelled worker cards are restored from saved r
 
 The browser stores local UI preferences such as backend, Codex plan/execute mode, transcription mode, assistant style, wake phrase, mute, and volume. Server defaults from `.env` are used first, then valid browser preferences are applied on top.
 
-Markdown transcript export includes both the saved conversation and any active planning questions still waiting for answers.
+Markdown transcript export includes both the saved conversation and any active planning questions still waiting for answers, including answered/pending state.
 
 The typed fallback composer also keeps an unsent local draft across refreshes. Use **Clear draft** to discard it.
 

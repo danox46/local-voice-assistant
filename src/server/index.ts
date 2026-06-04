@@ -25,7 +25,8 @@ import {
   getPlannerSession,
   recordPlannerFailure,
   retryLastPlannerTurn,
-  resetPlannerSession
+  resetPlannerSession,
+  updateActivePlannerQuestion
 } from "./plannerSessionStore";
 import { handleTextTurn } from "./textTurn";
 import { handleVoiceTurn } from "./voiceTurn";
@@ -323,6 +324,21 @@ app.post("/api/planner-session/reset", (_req, res) => {
 
 app.post("/api/planner-session/retry-last", (_req, res) => {
   res.json({ session: retryLastPlannerTurn() });
+});
+
+app.post("/api/planner-session/planner-prompt/questions/:id", (req, res) => {
+  try {
+    const body = z.object({ answered: z.boolean() }).parse(req.body);
+    res.json({ session: updateActivePlannerQuestion(req.params.id, body.answered) });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not update planning question.";
+    res.status(400).json({
+      error: {
+        code: "planner_question_update_failed",
+        message
+      }
+    });
+  }
 });
 
 app.post("/api/text-turn/retry-last", async (req, res) => {

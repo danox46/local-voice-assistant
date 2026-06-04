@@ -59,6 +59,13 @@ describe("App", () => {
       updatedAt: "2026-06-02T00:00:00.000Z",
       messages: []
     });
+    vi.mocked(api.updatePlannerQuestion).mockResolvedValue({
+      id: "main",
+      title: "Main planning session",
+      createdAt: "2026-06-02T00:00:00.000Z",
+      updatedAt: "2026-06-02T00:01:00.000Z",
+      messages: []
+    });
     vi.mocked(api.retryLastTextTurn).mockResolvedValue({
       userMessage: {
         id: "user-retry",
@@ -130,8 +137,58 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByText("Planning Questions")).toBeInTheDocument();
-    expect(screen.getByText("Voice cockpit plan")).toBeInTheDocument();
+    expect(screen.getByText(/Voice cockpit plan/)).toBeInTheDocument();
+    expect(screen.getByText(/0\/1 answered/)).toBeInTheDocument();
     expect(screen.getByText("What should this accomplish?")).toBeInTheDocument();
+  });
+
+  it("marks restored planning questions as answered", async () => {
+    const user = userEvent.setup();
+    const activePlannerPrompt = {
+      topic: "Voice cockpit plan",
+      status: "needs-input" as const,
+      questions: [
+        {
+          id: "goal",
+          label: "Goal",
+          question: "What should this accomplish?",
+          why: "The planner needs a target."
+        }
+      ]
+    };
+    vi.mocked(api.getPlannerSession).mockResolvedValueOnce({
+      id: "main",
+      title: "Main planning session",
+      createdAt: "2026-06-02T00:00:00.000Z",
+      updatedAt: "2026-06-02T00:00:30.000Z",
+      messages: [],
+      activePlannerPrompt
+    });
+    vi.mocked(api.updatePlannerQuestion).mockResolvedValueOnce({
+      id: "main",
+      title: "Main planning session",
+      createdAt: "2026-06-02T00:00:00.000Z",
+      updatedAt: "2026-06-02T00:01:00.000Z",
+      messages: [],
+      activePlannerPrompt: {
+        ...activePlannerPrompt,
+        questions: [{ ...activePlannerPrompt.questions[0], answeredAt: "2026-06-02T00:01:00.000Z" }]
+      }
+    });
+
+    render(<App />);
+
+    await screen.findByText(/0\/1 answered/);
+    await user.click(screen.getByRole("button", { name: "Mark answered" }));
+
+    await waitFor(() =>
+      expect(api.updatePlannerQuestion).toHaveBeenCalledWith({
+        questionId: "goal",
+        answered: true
+      })
+    );
+    expect(screen.getByText(/1\/1 answered/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mark pending" })).toBeInTheDocument();
   });
 
   it("exports the planner transcript from the toolbar", async () => {

@@ -44,7 +44,8 @@ import {
   retryLastTextTurn,
   sendAudioTextTurn,
   sendTextTurn,
-  sendVoiceTurn
+  sendVoiceTurn,
+  updatePlannerQuestion
 } from "./api";
 import { MicActivityMonitor, PushToTalkRecorder, PushToTalkSpeechRecognizer } from "./recorder";
 
@@ -389,6 +390,8 @@ export function App() {
   const attentionSessions = visibleSessions.filter(
     (session) => sessionNeedsAttention(session)
   );
+  const answeredPlannerQuestions =
+    plannerPrompt?.questions.filter((question) => question.answeredAt).length ?? 0;
   const completedSessions = visibleSessions.filter((session) => session.status === "done");
   const canUseWakePhrase = PushToTalkSpeechRecognizer.isSupported();
   const wakeIsArmed = wakeEnabled && canUseWakePhrase && wakeStatus === "listening";
@@ -419,6 +422,27 @@ export function App() {
       saveTypedDraft(next);
       return next;
     });
+  }
+
+  async function togglePlannerQuestion(questionId: string, answered: boolean) {
+    if (!plannerPrompt) return;
+    const previousPrompt = plannerPrompt;
+    const nextPrompt = {
+      ...plannerPrompt,
+      questions: plannerPrompt.questions.map((question) =>
+        question.id === questionId
+          ? { ...question, answeredAt: answered ? new Date().toISOString() : undefined }
+          : question
+      )
+    };
+    setPlannerPrompt(nextPrompt);
+    try {
+      const session = await updatePlannerQuestion({ questionId, answered });
+      setPlannerPrompt(session.activePlannerPrompt ?? nextPrompt);
+    } catch (err) {
+      setPlannerPrompt(previousPrompt);
+      setError(err instanceof Error ? err.message : "Could not update the planning question.");
+    }
   }
 
   function useCommandExample(phrase: string) {
@@ -1499,22 +1523,36 @@ export function App() {
               <ClipboardList size={18} />
               <div>
                 <h2>Planning Questions</h2>
-                <p>{plannerPrompt.topic}</p>
+                <p>
+                  {plannerPrompt.topic} · {answeredPlannerQuestions}/{plannerPrompt.questions.length} answered
+                </p>
               </div>
             </div>
             <div className="planner-question-grid">
               {plannerPrompt.questions.map((question) => (
-                <article className="planner-question" key={question.id}>
+                <article
+                  className={`planner-question ${question.answeredAt ? "answered" : ""}`}
+                  key={question.id}
+                >
                   <span>{question.label}</span>
                   <p>{question.question}</p>
                   <small>{question.why}</small>
-                  <button
-                    className="small-button"
-                    type="button"
-                    onClick={() => answerPlannerQuestion(question.question)}
-                  >
-                    Answer
-                  </button>
+                  <div className="planner-question-actions">
+                    <button
+                      className="small-button"
+                      type="button"
+                      onClick={() => answerPlannerQuestion(question.question)}
+                    >
+                      Answer
+                    </button>
+                    <button
+                      className="small-button"
+                      type="button"
+                      onClick={() => void togglePlannerQuestion(question.id, !question.answeredAt)}
+                    >
+                      {question.answeredAt ? "Mark pending" : "Mark answered"}
+                    </button>
+                  </div>
                 </article>
               ))}
             </div>

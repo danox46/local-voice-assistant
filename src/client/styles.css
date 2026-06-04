@@ -519,6 +519,16 @@ h2 {
   background: #fbfcf8;
 }
 
+.planner-question.answered {
+  border-color: #9bc5af;
+  background: #f2f8f1;
+}
+
+.planner-question.answered span::after {
+  content: " answered";
+  color: #4c7a43;
+}
+
 .planner-question span {
   color: #2f6f5e;
   font-size: 0.74rem;
@@ -536,6 +546,12 @@ h2 {
 .planner-question small {
   color: #5d7066;
   line-height: 1.4;
+}
+
+.planner-question-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .session-grid {

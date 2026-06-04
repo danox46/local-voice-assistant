@@ -35,6 +35,7 @@ export interface PlannerQuestion {
   label: string;
   question: string;
   why: string;
+  answeredAt?: string;
 }
 
 export interface PlannerPrompt {

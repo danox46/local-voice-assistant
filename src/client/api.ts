@@ -64,6 +64,25 @@ export async function retryLastPlannerTurn(): Promise<PlannerSession> {
   return body.session;
 }
 
+export async function updatePlannerQuestion(input: {
+  questionId: string;
+  answered: boolean;
+}): Promise<PlannerSession> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/planner-session/planner-prompt/questions/${encodeURIComponent(input.questionId)}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ answered: input.answered })
+    }
+  );
+  if (!response.ok) throw new Error(await parseApiError(response));
+  const body = (await response.json()) as { session: PlannerSession };
+  return body.session;
+}
+
 export async function retryLastTextTurn(input: {
   settings: AssistantSettings;
   signal?: AbortSignal;
