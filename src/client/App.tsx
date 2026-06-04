@@ -45,6 +45,8 @@ import {
   sendAudioTextTurn,
   sendTextTurn,
   sendVoiceTurn,
+  speakLocalSpeech,
+  synthesizeLocalSpeech,
   updatePlannerQuestion
 } from "./api";
 import { MicActivityMonitor, PushToTalkRecorder, PushToTalkSpeechRecognizer } from "./recorder";
@@ -198,8 +200,12 @@ function saveTypedDraft(value: string) {
 }
 
 function audioUrlFromResponse(turn: VoiceTurnResponse) {
-  const bytes = Uint8Array.from(atob(turn.audioBase64), (char) => char.charCodeAt(0));
-  const blob = new Blob([bytes], { type: turn.audioMimeType });
+  return audioUrlFromBase64(turn.audioBase64, turn.audioMimeType);
+}
+
+function audioUrlFromBase64(audioBase64: string, audioMimeType: string) {
+  const bytes = Uint8Array.from(atob(audioBase64), (char) => char.charCodeAt(0));
+  const blob = new Blob([bytes], { type: audioMimeType });
   return URL.createObjectURL(blob);
 }
 
@@ -359,6 +365,10 @@ export function App() {
   const speechActiveRef = useRef(false);
   const speechTokenRef = useRef(0);
   const speechTimeoutRef = useRef<number | null>(null);
+  const localSpeechQueueRef = useRef<string[]>([]);
+  const localSpeechActiveRef = useRef(false);
+  const localSpeechAudioRef = useRef<HTMLAudioElement | null>(null);
+  const localSpeechObjectUrlRef = useRef<string | null>(null);
   const mutedRef = useRef(muted);
   const volumeRef = useRef(volume);
   const uiStateRef = useRef(uiState);
@@ -608,7 +618,56 @@ export function App() {
     speechTimeoutRef.current = window.setTimeout(finish, estimatedMs);
   }
 
-  function enqueueBrowserSummary(
+  function releaseLocalSpeechAudio() {
+    localSpeechAudioRef.current?.pause();
+    localSpeechAudioRef.current = null;
+    if (localSpeechObjectUrlRef.current) {
+      URL.revokeObjectURL(localSpeechObjectUrlRef.current);
+      localSpeechObjectUrlRef.current = null;
+    }
+  }
+
+  async function playNextLocalSpeechSummary() {
+    if (localSpeechActiveRef.current) return;
+    const nextSummary = localSpeechQueueRef.current.shift();
+    if (!nextSummary) {
+      setUiState((current) => (current === "speaking" ? "idle" : current));
+      return;
+    }
+
+    localSpeechActiveRef.current = true;
+    setUiState("speaking");
+    try {
+      await speakLocalSpeech({ text: nextSummary });
+    } catch (err) {
+      try {
+        const speech = await synthesizeLocalSpeech({ text: nextSummary });
+        const url = audioUrlFromBase64(speech.audioBase64, speech.audioMimeType);
+        localSpeechObjectUrlRef.current = url;
+        const audio = new Audio(url);
+        localSpeechAudioRef.current = audio;
+        audio.volume = mutedRef.current ? 0 : volumeRef.current;
+        await new Promise<void>((resolve, reject) => {
+          audio.onended = () => resolve();
+          audio.onerror = () => reject(new Error("Local audio playback failed."));
+          void audio.play().catch(reject);
+        });
+      } catch (fallbackErr) {
+        enqueueBrowserOnlySummary(nextSummary, { replace: false, force: true });
+        if (fallbackErr instanceof Error) {
+          setError(`Local voice fallback failed: ${fallbackErr.message}`);
+        } else if (err instanceof Error) {
+          setError(`Local voice fallback failed: ${err.message}`);
+        }
+      }
+    } finally {
+      releaseLocalSpeechAudio();
+      localSpeechActiveRef.current = false;
+      void playNextLocalSpeechSummary();
+    }
+  }
+
+  function enqueueBrowserOnlySummary(
     summary: string,
     options: { replace?: boolean; force?: boolean } = {}
   ) {
@@ -621,7 +680,43 @@ export function App() {
       speechActiveRef.current = false;
       speechUtteranceRef.current = null;
       speechTokenRef.current += 1;
-      window.speechSynthesis.cancel();
+      if (browserSpeechSupported()) {
+        window.speechSynthesis.cancel();
+      }
+    }
+
+    speechQueueRef.current.push(...splitSpeechIntoChunks(cleanSummary));
+    playNextBrowserSummary();
+  }
+
+  function enqueueBrowserSummary(
+    summary: string,
+    options: { replace?: boolean; force?: boolean } = {}
+  ) {
+    const cleanSummary = summary.trim();
+    if (!cleanSummary) return;
+    if (mutedRef.current && !options.force) return;
+
+    if (settings.backend === "codex-cli" || settings.backend === "gemini-cli") {
+      if (options.replace) {
+        localSpeechQueueRef.current = [];
+        releaseLocalSpeechAudio();
+        localSpeechActiveRef.current = false;
+        clearBrowserPlaybackQueue();
+      }
+      localSpeechQueueRef.current.push(...splitSpeechIntoChunks(cleanSummary, 260));
+      void playNextLocalSpeechSummary();
+      return;
+    }
+
+    if (options.replace) {
+      speechQueueRef.current = [];
+      speechActiveRef.current = false;
+      speechUtteranceRef.current = null;
+      speechTokenRef.current += 1;
+      if (browserSpeechSupported()) {
+        window.speechSynthesis.cancel();
+      }
     }
 
     speechQueueRef.current.push(...splitSpeechIntoChunks(cleanSummary));
@@ -658,6 +753,9 @@ export function App() {
   }
 
   function clearBrowserPlaybackQueue() {
+    localSpeechQueueRef.current = [];
+    localSpeechActiveRef.current = false;
+    releaseLocalSpeechAudio();
     speechQueueRef.current = [];
     speechActiveRef.current = false;
     speechUtteranceRef.current = null;
@@ -666,7 +764,9 @@ export function App() {
       window.clearTimeout(speechTimeoutRef.current);
       speechTimeoutRef.current = null;
     }
-    window.speechSynthesis.cancel();
+    if (browserSpeechSupported()) {
+      window.speechSynthesis.cancel();
+    }
     setUiState((current) => (current === "speaking" ? "idle" : current));
   }
 
@@ -749,6 +849,9 @@ export function App() {
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.volume = muted ? 0 : volume;
+    }
+    if (localSpeechAudioRef.current) {
+      localSpeechAudioRef.current.volume = muted ? 0 : volume;
     }
     mutedRef.current = muted;
     volumeRef.current = volume;

@@ -45,6 +45,11 @@ describe("App", () => {
     vi.mocked(api.listActivity).mockResolvedValue([]);
     vi.mocked(api.cancelSession).mockResolvedValue({ cancelled: true });
     vi.mocked(api.exportPlannerSession).mockResolvedValue(new Blob(["# Main planning session"]));
+    vi.mocked(api.synthesizeLocalSpeech).mockResolvedValue({
+      audioMimeType: "audio/wav",
+      audioBase64: btoa("audio")
+    });
+    vi.mocked(api.speakLocalSpeech).mockResolvedValue({ spoken: true });
     vi.mocked(api.getPlannerSession).mockResolvedValue({
       id: "main",
       title: "Main planning session",
@@ -371,7 +376,8 @@ describe("App", () => {
     await user.type(screen.getAllByLabelText("Type instead")[0], "repeat last response");
     await user.click(screen.getByRole("button", { name: "Send to Codex" }));
 
-    await waitFor(() => expect(speak).toHaveBeenCalled());
+    await waitFor(() => expect(api.speakLocalSpeech).toHaveBeenCalled());
+    expect(speak).not.toHaveBeenCalled();
     expect(api.sendTextTurn).not.toHaveBeenCalled();
     expect(api.retryLastTextTurn).not.toHaveBeenCalled();
 
@@ -405,22 +411,17 @@ describe("App", () => {
         }
       }
     );
-    const speak = vi
-      .spyOn(window.speechSynthesis, "speak")
-      .mockImplementation(() => undefined);
-
     render(<App />);
 
     await screen.findByText("Ready");
     await user.click(screen.getByRole("button", { name: "Test voice" }));
 
-    await waitFor(() => expect(speak).toHaveBeenCalled());
+    await waitFor(() => expect(api.speakLocalSpeech).toHaveBeenCalled());
+    expect(api.synthesizeLocalSpeech).not.toHaveBeenCalled();
     expect(screen.getByText(/Voice test/)).toBeInTheDocument();
     expect(Number((screen.getByLabelText("Volume") as HTMLInputElement).value)).toBeGreaterThanOrEqual(
       0.75
     );
-
-    speak.mockRestore();
   });
 
   it("shows the setup message when Codex CLI is missing", async () => {

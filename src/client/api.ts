@@ -179,6 +179,32 @@ export async function cancelTurn() {
   return (await response.json()) as { cancelled: boolean };
 }
 
+export async function synthesizeLocalSpeech(input: {
+  text: string;
+}): Promise<{ audioMimeType: string; audioBase64: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/local-speech`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+  if (!response.ok) throw new Error(await parseApiError(response));
+  return (await response.json()) as { audioMimeType: string; audioBase64: string };
+}
+
+export async function speakLocalSpeech(input: { text: string }): Promise<{ spoken: boolean }> {
+  const response = await fetch(`${API_BASE_URL}/api/system-speech`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+  if (!response.ok) throw new Error(await parseApiError(response));
+  return (await response.json()) as { spoken: boolean };
+}
+
 export async function listSessions(): Promise<BackgroundSession[]> {
   const response = await fetch(`${API_BASE_URL}/api/sessions`);
   if (!response.ok) throw new Error(await parseApiError(response));

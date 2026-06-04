@@ -18,6 +18,7 @@ import { OpenAISpeechSynthesizer } from "./providers/openaiSpeechSynthesizer";
 import { OpenAITranscriber } from "./providers/openaiTranscriber";
 import { handlePlannerTurn } from "./plannerTurn";
 import { handleSessionCommand } from "./sessionCommands";
+import { speakLocalSpeech, synthesizeLocalSpeech } from "./localSpeech";
 import {
   appendPlannerTurn,
   formatPlannerSessionMarkdown,
@@ -78,6 +79,10 @@ const sessionCreateSchema = z.object({
   title: z.string().trim().min(1).max(120),
   prompt: z.string().trim().min(8).max(8000),
   mode: z.enum(["execute", "plan"]).default("execute")
+});
+
+const localSpeechSchema = z.object({
+  text: z.string().trim().min(1).max(4000)
 });
 
 function parseJsonField<T>(value: unknown, fallback: T): T {
@@ -288,6 +293,43 @@ app.post("/api/text-turn", async (req, res) => {
 app.post("/api/cancel-turn", (_req, res) => {
   const cancelled = cancelActiveCodexRun();
   res.json({ cancelled });
+});
+
+app.post("/api/local-speech", async (req, res) => {
+  const parsed = localSpeechSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const error = apiError("invalid_speech_request", parsed.error.message);
+    res.status(error.status).json(error.body);
+    return;
+  }
+
+  try {
+    res.json(await synthesizeLocalSpeech(parsed.data.text));
+  } catch (err) {
+    logServerError("local-speech failed", err);
+    const message = err instanceof Error ? err.message : "Could not generate local speech audio.";
+    const error = apiError("local_speech_failed", message, 500);
+    res.status(error.status).json(error.body);
+  }
+});
+
+app.post("/api/system-speech", async (req, res) => {
+  const parsed = localSpeechSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const error = apiError("invalid_speech_request", parsed.error.message);
+    res.status(error.status).json(error.body);
+    return;
+  }
+
+  try {
+    await speakLocalSpeech(parsed.data.text);
+    res.json({ spoken: true });
+  } catch (err) {
+    logServerError("system-speech failed", err);
+    const message = err instanceof Error ? err.message : "Could not use the local system voice.";
+    const error = apiError("system_speech_failed", message, 500);
+    res.status(error.status).json(error.body);
+  }
 });
 
 app.get("/api/sessions", (_req, res) => {

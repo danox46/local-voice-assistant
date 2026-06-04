@@ -14,6 +14,7 @@ Local Voice Assistant is a local web app for talking to a planning agent, keepin
 - Full response history on screen.
 - Markdown export for the main planning transcript.
 - Short spoken summaries with a playback queue to prevent overlapping notifications.
+- Windows system voice fallback for Codex/Gemini summaries when browser speech is silent.
 - Background worker sessions for Codex CLI tasks.
 - Voice-native worker commands for focusing, inspecting, continuing, cancelling, and archiving sessions.
 - Session supervision that separates stale work, user-needed blockers, and agent-actionable issues.
@@ -118,6 +119,8 @@ The typed fallback composer also keeps an unsent local draft across refreshes. U
 Use **Retry last turn** or say `retry last turn` when the latest answer was cut off, awkward, or failed. In Codex mode, the app removes the latest saved user/assistant pair from planner memory before resending the same user request, so the retry is not polluted by the answer you are replacing.
 
 Say `repeat last response` or `read that again` when you only want the latest spoken summary replayed. That command runs locally in the browser and does not add a new planner message.
+
+In Codex CLI and Gemini CLI modes on Windows, spoken summaries use the local Windows system voice first. If that fails, the app falls back to a generated WAV and then browser speech synthesis. OpenAI voice mode still uses generated cloud audio when configured.
 
 `work/` is ignored by Git because it may contain private transcripts, project context, and local execution details.
 
