@@ -31,6 +31,11 @@ export const voiceCommandCatalog: VoiceCommandExample[] = [
     description: "Remove the latest saved planner turn and run that user request again."
   },
   {
+    category: "planning",
+    phrase: "mark goal question answered",
+    description: "Update planning-question progress without touching the mouse."
+  },
+  {
     category: "settings",
     phrase: "switch to plan mode",
     description: "Make new Codex workers inspect and plan without editing files."

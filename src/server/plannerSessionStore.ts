@@ -225,6 +225,22 @@ export function updateActivePlannerQuestion(questionId: string, answered: boolea
   return writeSession(updateActivePlannerQuestionInSession(readSession(), questionId, answered));
 }
 
+export function updateActivePlannerQuestions(answered: boolean) {
+  const session = readSession();
+  const prompt = session.activePlannerPrompt;
+  if (!prompt) return session;
+  return writeSession({
+    ...session,
+    activePlannerPrompt: {
+      ...prompt,
+      questions: prompt.questions.map((question) => ({
+        ...question,
+        answeredAt: answered ? now() : undefined
+      }))
+    }
+  });
+}
+
 export function recordPlannerFailure(transcript: string, errorMessage: string) {
   const session = readSession();
   const userMessage = createMessage("user", transcript.trim());

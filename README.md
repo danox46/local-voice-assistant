@@ -32,7 +32,7 @@ Worker modes:
 - `execute`: workers may edit files in `CODEX_WORKDIR`
 - `plan`: workers inspect and plan without editing
 
-When Codex mode is set to `plan`, the main agent can pause before delegation and ask structured planning questions. Those questions appear in the app as a planning panel, survive refreshes, and remain answerable by voice or typed fallback. You can also mark questions answered or pending so the panel works like a small planning checklist.
+When Codex mode is set to `plan`, the main agent can pause before delegation and ask structured planning questions. Those questions appear in the app as a planning panel, survive refreshes, and remain answerable by voice or typed fallback. You can also mark questions answered or pending by voice or button so the panel works like a small planning checklist.
 
 In Codex mode, the planner receives a compact operational snapshot on every turn: visible workers, supervision state, and recent Activity. That lets status questions and follow-up planning use the current project state instead of relying only on remembered chat text.
 
@@ -165,6 +165,7 @@ The same controls are available by voice in Codex mode:
 - `what mode are we in`
 - `start a new chat`
 - `catch me up on the planning session`
+- `mark goal question answered`
 - `repeat last response`
 - `retry last turn`
 - `what can I say`

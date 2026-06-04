@@ -21,7 +21,20 @@ const plannerSession = {
       content: "We should add planner memory, workers, and activity tracking.",
       createdAt: "2026-06-03T10:01:00.000Z"
     }
-  ]
+  ],
+  activePlannerPrompt: undefined as
+    | {
+        topic: string;
+        status: "needs-input";
+        questions: Array<{
+          id: string;
+          label: string;
+          question: string;
+          why: string;
+          answeredAt?: string;
+        }>;
+      }
+    | undefined
 };
 
 vi.mock("./activityFeed", () => ({
@@ -38,7 +51,33 @@ vi.mock("./plannerSessionStore", () => ({
     ...plannerSession,
     updatedAt: "2026-06-03T10:12:00.000Z",
     messages: []
-  }))
+  })),
+  updateActivePlannerQuestion: vi.fn((id: string, answered: boolean) => {
+    if (!plannerSession.activePlannerPrompt) return plannerSession;
+    plannerSession.activePlannerPrompt = {
+      ...plannerSession.activePlannerPrompt,
+      questions: plannerSession.activePlannerPrompt.questions.map((question) =>
+        question.id === id
+          ? {
+              ...question,
+              answeredAt: answered ? "2026-06-03T10:13:00.000Z" : undefined
+            }
+          : question
+      )
+    };
+    return plannerSession;
+  }),
+  updateActivePlannerQuestions: vi.fn((answered: boolean) => {
+    if (!plannerSession.activePlannerPrompt) return plannerSession;
+    plannerSession.activePlannerPrompt = {
+      ...plannerSession.activePlannerPrompt,
+      questions: plannerSession.activePlannerPrompt.questions.map((question) => ({
+        ...question,
+        answeredAt: answered ? "2026-06-03T10:13:00.000Z" : undefined
+      }))
+    };
+    return plannerSession;
+  })
 }));
 
 vi.mock("./sessionManager", () => ({
@@ -128,6 +167,7 @@ function makeSession(overrides: Partial<BackgroundSession>): BackgroundSession {
 describe("handleSessionCommand", () => {
   beforeEach(() => {
     sessions.splice(0, sessions.length);
+    plannerSession.activePlannerPrompt = undefined;
     vi.clearAllMocks();
   });
 
@@ -288,6 +328,7 @@ describe("handleSessionCommand", () => {
 
     expect(result?.assistantMessage.content).toContain("focus the latest worker");
     expect(result?.assistantMessage.content).toContain("switch to plan mode");
+    expect(result?.assistantMessage.content).toContain("mark goal question answered");
     expect(result?.assistantMessage.content).toContain("repeat last response");
     expect(result?.assistantMessage.content).toContain("retry last turn");
     expect(result?.assistantMessage.content).toContain("continue actionable blockers");
@@ -320,6 +361,65 @@ describe("handleSessionCommand", () => {
     expect(recordActivity).toHaveBeenCalledWith(
       expect.objectContaining({ title: "Planner recap requested" })
     );
+  });
+
+  it("marks a named planning question answered by voice", async () => {
+    const { handleSessionCommand } = await import("./sessionCommands");
+    plannerSession.activePlannerPrompt = {
+      topic: "Voice cockpit plan",
+      status: "needs-input",
+      questions: [
+        {
+          id: "goal",
+          label: "Goal",
+          question: "What should this accomplish?",
+          why: "The planner needs a target."
+        },
+        {
+          id: "scope",
+          label: "Scope",
+          question: "What should wait?",
+          why: "Boundaries help the worker."
+        }
+      ]
+    };
+
+    const result = handleSessionCommand("Mark the goal question answered", [], settings);
+
+    expect(result?.assistantMessage.content).toContain("Planning progress: 1/2 answered");
+    expect(plannerSession.activePlannerPrompt.questions[0].answeredAt).toBeTruthy();
+    expect(recordActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Planning question updated" })
+    );
+  });
+
+  it("marks all planning questions pending by voice", async () => {
+    const { handleSessionCommand } = await import("./sessionCommands");
+    plannerSession.activePlannerPrompt = {
+      topic: "Voice cockpit plan",
+      status: "needs-input",
+      questions: [
+        {
+          id: "goal",
+          label: "Goal",
+          question: "What should this accomplish?",
+          why: "The planner needs a target.",
+          answeredAt: "2026-06-03T10:13:00.000Z"
+        },
+        {
+          id: "scope",
+          label: "Scope",
+          question: "What should wait?",
+          why: "Boundaries help the worker.",
+          answeredAt: "2026-06-03T10:13:00.000Z"
+        }
+      ]
+    };
+
+    const result = handleSessionCommand("Mark all planning questions pending", [], settings);
+
+    expect(result?.assistantMessage.content).toContain("Planning progress: 0/2 answered");
+    expect(plannerSession.activePlannerPrompt.questions.every((question) => !question.answeredAt)).toBe(true);
   });
 
   it("returns undefined for ordinary conversational turns", async () => {

@@ -8,7 +8,12 @@ import type {
 } from "../shared/types";
 import { commandCatalogSummary } from "../shared/voiceCommandCatalog";
 import { recordActivity } from "./activityFeed";
-import { getPlannerSession, resetPlannerSession } from "./plannerSessionStore";
+import {
+  getPlannerSession,
+  resetPlannerSession,
+  updateActivePlannerQuestion,
+  updateActivePlannerQuestions
+} from "./plannerSessionStore";
 import { spokenSummaryFrom } from "./plannerTurn";
 import {
   archiveBackgroundSession,
@@ -140,6 +145,86 @@ function plannerRecap(messages: ConversationMessage[]) {
   };
 }
 
+const ordinalQuestionIds = new Map([
+  ["first", 0],
+  ["1st", 0],
+  ["one", 0],
+  ["second", 1],
+  ["2nd", 1],
+  ["two", 1],
+  ["third", 2],
+  ["3rd", 2],
+  ["three", 2],
+  ["fourth", 3],
+  ["4th", 3],
+  ["four", 3]
+]);
+
+function findPlannerQuestionId(clean: string) {
+  const plannerSession = getPlannerSession();
+  const prompt = plannerSession.activePlannerPrompt;
+  if (!prompt) return undefined;
+  for (const [word, index] of ordinalQuestionIds) {
+    if (new RegExp(`\\b${word}\\b`).test(clean) && prompt.questions[index]) {
+      return prompt.questions[index].id;
+    }
+  }
+  return prompt.questions.find((question) => {
+    const id = cleanTranscript(question.id);
+    const label = cleanTranscript(question.label);
+    return (id && new RegExp(`\\b${id}\\b`).test(clean)) || (label && new RegExp(`\\b${label}\\b`).test(clean));
+  })?.id;
+}
+
+function planningQuestionCommand(original: string, clean: string, settings: AssistantSettings) {
+  if (
+    !/\b(mark|set|check|complete|clear)\b/.test(clean) ||
+    !/\b(question|questions|planning|planner|prompt|goal|scope|constraint|constraints|audience|workflow|first|second|third|fourth)\b/.test(clean) ||
+    !/\b(answered|answer|done|complete|completed|pending|unanswered|open)\b/.test(clean)
+  ) {
+    return undefined;
+  }
+
+  const plannerSession = getPlannerSession();
+  const prompt = plannerSession.activePlannerPrompt;
+  if (!prompt) {
+    return commandResponse({
+      transcript: original,
+      settings,
+      answer: "There are no active planning questions to update.",
+      spokenSummary: "No active planning questions are available."
+    });
+  }
+
+  const answered = !/\b(pending|unanswered|open|not answered)\b/.test(clean);
+  const allQuestions = /\b(all|everything|every)\b/.test(clean);
+  const nextSession = allQuestions
+    ? updateActivePlannerQuestions(answered)
+    : updateActivePlannerQuestion(findPlannerQuestionId(clean) ?? prompt.questions[0].id, answered);
+  const nextPrompt = nextSession.activePlannerPrompt;
+  const answeredCount = nextPrompt?.questions.filter((question) => question.answeredAt).length ?? 0;
+  const total = nextPrompt?.questions.length ?? prompt.questions.length;
+  const target = allQuestions
+    ? "all planning questions"
+    : nextPrompt?.questions.find((question) => question.id === findPlannerQuestionId(clean))?.label ??
+      prompt.questions.find((question) => question.id === findPlannerQuestionId(clean))?.label ??
+      "the selected planning question";
+
+  recordActivity({
+    kind: "system",
+    title: "Planning question updated",
+    detail: `${target} marked ${answered ? "answered" : "pending"}.`,
+    severity: "info"
+  });
+  return commandResponse({
+    transcript: original,
+    settings,
+    plannerSession: nextSession,
+    answer: `Marked ${target} ${answered ? "answered" : "pending"}.\n\nPlanning progress: ${answeredCount}/${total} answered.`,
+    spokenSummary: `Marked ${target} ${answered ? "answered" : "pending"}. ${answeredCount} of ${total} planning questions are answered.`
+  });
+}
+
 export function handleSessionCommand(
   transcript: string,
   history: ConversationMessage[],
@@ -156,7 +241,7 @@ export function handleSessionCommand(
     const answer = [
       "You can talk normally for planning or brainstorming. For direct cockpit controls, try:",
       "",
-      commandCatalogSummary(14)
+      commandCatalogSummary(15)
     ].join("\n");
     recordActivity({
       kind: "system",
@@ -169,7 +254,7 @@ export function handleSessionCommand(
       settings,
       answer,
       spokenSummary:
-        "You can talk normally for planning. Useful commands include: repeat last response, retry last turn, switch to plan mode, focus the latest worker, inspect the current worker, continue actionable blockers, and start a new chat."
+        "You can talk normally for planning. Useful commands include: mark goal question answered, repeat last response, retry last turn, switch to plan mode, focus the latest worker, inspect the current worker, continue actionable blockers, and start a new chat."
     });
   }
 
@@ -212,6 +297,9 @@ export function handleSessionCommand(
       spokenSummary: recap.spokenSummary
     });
   }
+
+  const plannerQuestionResult = planningQuestionCommand(original, clean, settings);
+  if (plannerQuestionResult) return plannerQuestionResult;
 
   if (
     /\b(what|which|current|show|tell me)\b/.test(clean) &&
