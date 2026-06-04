@@ -230,6 +230,10 @@ function activityTime(event: ActivityEvent) {
   });
 }
 
+function readinessCopy(ready: boolean) {
+  return ready ? "Ready" : "Needs setup";
+}
+
 export function splitSpeechIntoChunks(text: string, maxChunkLength = 180) {
   const clean = text.replace(/\s+/g, " ").trim();
   if (!clean) return [];
@@ -1105,6 +1109,45 @@ export function App() {
       : settings.backend === "gemini-cli"
         ? "Gemini CLI"
         : "OpenAI cloud voice";
+  const backendReady =
+    settings.backend === "codex-cli"
+      ? hasCodexCli
+      : settings.backend === "gemini-cli"
+        ? hasGeminiCli
+        : hasOpenAiKey;
+  const transcriptionReady =
+    settings.transcriptionMode === "browser"
+      ? !needsSpeechRecognition
+      : settings.transcriptionMode === "gemini-cli-audio"
+        ? hasGeminiCli
+        : hasOpenAiKey;
+  const readinessItems = [
+    {
+      label: "Backend",
+      value: backendLabel,
+      ready: backendReady
+    },
+    {
+      label: "Worker mode",
+      value: settings.codexMode === "plan" ? "Plan only" : "Execute",
+      ready: true
+    },
+    {
+      label: "Transcription",
+      value:
+        settings.transcriptionMode === "browser"
+          ? "Browser speech"
+          : settings.transcriptionMode === "gemini-cli-audio"
+            ? "Gemini audio"
+            : "OpenAI cloud",
+      ready: transcriptionReady
+    },
+    {
+      label: "Wake phrase",
+      value: wakeEnabled ? "Tensoon" : "Off",
+      ready: !wakeEnabled || canUseWakePhrase
+    }
+  ];
 
   return (
     <main className="shell">
@@ -1128,6 +1171,22 @@ export function App() {
             </button>
           </div>
         </header>
+
+        <section className="readiness-strip" aria-label="System readiness">
+          <div>
+            <p className="eyebrow">System Readiness</p>
+            <h2>{backendReady && transcriptionReady ? "Ready for voice work" : "Setup needed"}</h2>
+          </div>
+          <div className="readiness-grid">
+            {readinessItems.map((item) => (
+              <article className={item.ready ? "ready" : "needs-setup"} key={item.label}>
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+                <small>{readinessCopy(item.ready)}</small>
+              </article>
+            ))}
+          </div>
+        </section>
 
         <div className={`talk-zone ${uiState}`}>
           <div className="status-pill">

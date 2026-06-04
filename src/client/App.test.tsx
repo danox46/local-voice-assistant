@@ -65,6 +65,10 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Start recording" })).toBeInTheDocument();
     expect(screen.getByText("Transcript")).toBeInTheDocument();
     expect(screen.getByText("Full response")).toBeInTheDocument();
+    expect(screen.getByText("System Readiness")).toBeInTheDocument();
+    expect(screen.getByText("Setup needed")).toBeInTheDocument();
+    expect(screen.getByText("Codex CLI")).toBeInTheDocument();
+    expect(screen.getByText("Execute")).toBeInTheDocument();
     expect(screen.getByText("Worker Sessions")).toBeInTheDocument();
     expect(screen.getByText("Activity")).toBeInTheDocument();
     expect(screen.getByText("Voice Commands")).toBeInTheDocument();
@@ -117,6 +121,7 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByText(/Codex CLI is not installed/)).toBeInTheDocument();
+    expect(screen.getByText("Setup needed")).toBeInTheDocument();
   });
 
   it("splits long spoken summaries into reliable playback chunks", () => {

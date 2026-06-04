@@ -40,6 +40,7 @@ textarea {
 }
 
 .topbar,
+.readiness-strip,
 .audio-strip,
 .settings-drawer,
 .panel {
@@ -55,6 +56,58 @@ textarea {
   gap: 18px;
   padding: 22px;
   border-radius: 8px;
+}
+
+.readiness-strip {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.34fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  padding: 16px;
+  border-radius: 8px;
+}
+
+.readiness-strip h2 {
+  color: #26362f;
+}
+
+.readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.readiness-grid article {
+  display: grid;
+  gap: 4px;
+  min-height: 76px;
+  padding: 10px;
+  border: 1px solid #dce5d8;
+  border-left: 5px solid #6f9e4f;
+  border-radius: 8px;
+  background: #fbfdf8;
+}
+
+.readiness-grid article.needs-setup {
+  border-left-color: #c4563e;
+  background: #fff8f5;
+}
+
+.readiness-grid span {
+  color: #65776e;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.readiness-grid strong {
+  color: #22342b;
+  font-size: 0.94rem;
+}
+
+.readiness-grid small {
+  color: #4e6258;
+  font-weight: 800;
 }
 
 .eyebrow {
@@ -868,6 +921,7 @@ textarea {
 
 @media (max-width: 700px) {
   .topbar,
+  .readiness-strip,
   .audio-strip,
   .panes {
     grid-template-columns: 1fr;
@@ -875,6 +929,10 @@ textarea {
 
   .topbar {
     align-items: flex-start;
+  }
+
+  .readiness-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .panes {

@@ -21,7 +21,7 @@ flowchart TD
 
 ## Client
 
-The React app handles microphone permission, push-to-talk controls, wake phrase activation, live transcript display, typed fallback input, worker session cards, settings, and playback controls.
+The React app handles microphone permission, push-to-talk controls, wake phrase activation, live transcript display, typed fallback input, worker session cards, readiness indicators, settings, and playback controls.
 
 Spoken notifications pass through a playback queue. Long summaries are split into short chunks to avoid browser `SpeechSynthesisUtterance` cutoffs and overlapping worker notifications.
 

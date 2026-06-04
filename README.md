@@ -14,6 +14,7 @@ Local Voice Assistant is a local web app for talking to a planning agent, keepin
 - Voice-native worker commands for focusing, inspecting, continuing, cancelling, and archiving sessions.
 - Session supervision that separates stale work, user-needed blockers, and agent-actionable issues.
 - Activity timeline for mode changes, worker lifecycle events, inspections, and notifications.
+- Readiness strip for backend, transcription, worker mode, and wake phrase setup.
 - Optional Gemini CLI and OpenAI cloud voice/transcription modes.
 
 ## Modes
