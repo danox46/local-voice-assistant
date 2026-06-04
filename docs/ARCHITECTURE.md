@@ -35,7 +35,7 @@ The typed fallback composer stores its unsent draft in browser `localStorage` an
 
 ## Wake Phrase
 
-The wake phrase is a browser-speech idle listener. When enabled, the client starts a lightweight recognition loop only while the app is idle or in an error-ready state. If it hears `Tensoon` or likely transcript variants, it stops the wake listener and starts the normal recording flow.
+The wake phrase is a browser-speech idle listener. When enabled, the client starts a lightweight recognition loop only while the app is idle or in an error-ready state. If it hears `Darren` or likely transcript variants, it stops the wake listener and starts the normal recording flow.
 
 Wake phrase activation does not bypass the existing turn flow: microphone activity, auto-stop, transcript handling, server routing, and response playback still use the same code path as push-to-talk.
 

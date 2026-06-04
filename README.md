@@ -5,7 +5,7 @@ Local Voice Assistant is a local web app for talking to a planning agent, keepin
 ## What It Does
 
 - Push-to-talk browser UI with live microphone activity.
-- Optional wake phrase listener: say `Tensoon` while the app is idle to start a command.
+- Optional wake phrase listener: say `Darren` while the app is idle to start a command.
 - Browser speech recognition with typed fallback.
 - Server-side planner context and active planning questions that survive refreshes and failed turns.
 - Planner answers that include current worker and Activity context in Codex mode.
@@ -123,7 +123,7 @@ Say `repeat last response` or `read that again` when you only want the latest sp
 
 ## Wake Phrase
 
-Enable **Wake on "tensoon"** in Settings to arm the idle browser-speech listener. When the app hears `Tensoon` or likely transcript variants such as `ten soon`, it switches into the normal recording flow.
+Enable **Wake on "Darren"** in Settings to arm the idle browser-speech listener. When the app hears `Darren` or likely transcript variants such as `Darien` or `Darin`, it switches into the normal recording flow.
 
 This uses browser speech recognition, so support depends on the browser and microphone permissions. Push-to-talk remains available even when wake phrase support is unavailable.
 

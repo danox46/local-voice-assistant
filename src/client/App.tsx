@@ -51,7 +51,8 @@ import { MicActivityMonitor, PushToTalkRecorder, PushToTalkSpeechRecognizer } fr
 
 type UiState = "loading" | "idle" | "recording" | "thinking" | "speaking" | "error";
 const AUTO_STOP_AFTER_MS = 3500;
-const WAKE_PHRASE = "tensoon";
+const WAKE_PHRASE = "darren";
+const WAKE_PHRASE_LABEL = "Darren";
 const SETTINGS_STORAGE_KEY = "local-voice-assistant.settings.v1";
 const UI_PREFS_STORAGE_KEY = "local-voice-assistant.ui-prefs.v1";
 const TYPED_DRAFT_STORAGE_KEY = "local-voice-assistant.typed-draft.v1";
@@ -303,8 +304,8 @@ export function containsWakePhrase(transcript: string, wakePhrase = WAKE_PHRASE)
     .trim();
   const compact = normalized.replace(/\s+/g, "");
   const expected = wakePhrase.toLowerCase().replace(/\s+/g, "");
-  const likelyVariants = [expected, "tension", "tensoon", "tenson", "tensun", "tenzone"];
-  return likelyVariants.some((variant) => compact.includes(variant)) || normalized.includes("ten soon");
+  const likelyVariants = [expected, "darien", "darin", "daren", "darren", "derrin"];
+  return likelyVariants.some((variant) => compact.includes(variant));
 }
 
 export function historyWithoutLastTurn(messages: ConversationMessage[]) {
@@ -1294,7 +1295,7 @@ export function App() {
     },
     {
       label: "Wake phrase",
-      value: wakeEnabled ? "Tensoon" : "Off",
+      value: wakeEnabled ? WAKE_PHRASE_LABEL : "Off",
       ready: !wakeEnabled || canUseWakePhrase
     }
   ];
@@ -1406,7 +1407,7 @@ export function App() {
           {uiState === "idle" && wakeEnabled ? (
             <p className={`wake-hint ${wakeStatus}`}>
               {wakeIsArmed
-                ? `Say "${WAKE_PHRASE}" to start listening.`
+                ? `Say "${WAKE_PHRASE_LABEL}" to start listening.`
                 : canUseWakePhrase
                   ? "Wake phrase is waiting for the speech listener."
                   : "Wake phrase needs browser speech recognition support."}
@@ -1872,7 +1873,7 @@ export function App() {
             type="checkbox"
             onChange={(event) => setWakeEnabled(event.target.checked)}
           />
-          Wake on "{WAKE_PHRASE}"
+          Wake on "{WAKE_PHRASE_LABEL}"
         </label>
         {settings.backend === "codex-cli" ? (
           <label>

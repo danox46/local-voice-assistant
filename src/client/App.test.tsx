@@ -100,7 +100,7 @@ describe("App", () => {
     expect(screen.getByText("Voice Commands")).toBeInTheDocument();
     expect(screen.getByText("focus the latest worker")).toBeInTheDocument();
     expect(screen.getByText("Spoken summary · AI-generated voice")).toBeInTheDocument();
-    expect(screen.getByText('Wake on "tensoon"')).toBeInTheDocument();
+    expect(screen.getByText('Wake on "Darren"')).toBeInTheDocument();
   });
 
   it("fills the typed prompt from a command example", async () => {
@@ -452,10 +452,10 @@ describe("App", () => {
     expect(chunks.every((chunk) => chunk.length <= 90)).toBe(true);
   });
 
-  it("recognizes the Tensoon wake phrase from likely transcripts", () => {
-    expect(containsWakePhrase("Tensoon")).toBe(true);
-    expect(containsWakePhrase("hey ten soon start listening")).toBe(true);
-    expect(containsWakePhrase("tension please")).toBe(true);
+  it("recognizes the Darren wake phrase from likely transcripts", () => {
+    expect(containsWakePhrase("Darren")).toBe(true);
+    expect(containsWakePhrase("hey Darien start listening")).toBe(true);
+    expect(containsWakePhrase("Darin please")).toBe(true);
     expect(containsWakePhrase("keep waiting for now")).toBe(false);
   });
 

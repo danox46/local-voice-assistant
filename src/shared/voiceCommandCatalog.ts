@@ -7,7 +7,7 @@ export interface VoiceCommandExample {
 export const voiceCommandCatalog: VoiceCommandExample[] = [
   {
     category: "audio",
-    phrase: "Tensoon",
+    phrase: "Darren",
     description: "Wake the app and start listening when the wake phrase is enabled."
   },
   {
