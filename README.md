@@ -147,7 +147,7 @@ The same controls are available by voice in Codex mode:
 - `catch me up on the planning session`
 - `what can I say`
 
-The app also shows these command examples in the Settings drawer. The visible command list and the voice help response use the same command catalog.
+The app also shows these command examples in the Settings drawer. Select any example to fill the typed prompt when speech recognition is not cooperating. The visible command list and the voice help response use the same command catalog.
 
 ## Architecture
 

@@ -819,9 +819,21 @@ textarea {
   text-transform: uppercase;
 }
 
-.command-help strong {
+.command-example-button {
+  width: fit-content;
+  border: 0;
+  padding: 0;
   color: #22342b;
+  background: transparent;
+  cursor: pointer;
   font-size: 0.9rem;
+  font-weight: 900;
+  text-align: left;
+}
+
+.command-example-button:hover {
+  color: #1f7d61;
+  text-decoration: underline;
 }
 
 .command-help p {

@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   App,
@@ -68,6 +69,16 @@ describe("App", () => {
     expect(screen.getByText("focus the latest worker")).toBeInTheDocument();
     expect(screen.getByText("Spoken summary · AI-generated voice")).toBeInTheDocument();
     expect(screen.getByText('Wake on "tensoon"')).toBeInTheDocument();
+  });
+
+  it("fills the typed prompt from a command example", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Ready");
+    await user.click(screen.getAllByRole("button", { name: "focus the latest worker" })[0]);
+
+    expect(screen.getAllByLabelText("Type instead")[0]).toHaveValue("focus the latest worker");
   });
 
   it("shows the setup message when Codex CLI is missing", async () => {

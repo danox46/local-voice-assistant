@@ -371,6 +371,12 @@ export function App() {
     });
   }
 
+  function useCommandExample(phrase: string) {
+    setTypedPrompt(phrase);
+    setLiveTranscript(phrase);
+    setSettingsOpen(false);
+  }
+
   function clearWakeRestartTimer() {
     if (!wakeRestartTimerRef.current) return;
     window.clearTimeout(wakeRestartTimerRef.current);
@@ -1647,7 +1653,13 @@ export function App() {
             {voiceCommandCatalog.map((command) => (
               <article key={command.phrase}>
                 <span>{command.category}</span>
-                <strong>{command.phrase}</strong>
+                <button
+                  className="command-example-button"
+                  type="button"
+                  onClick={() => useCommandExample(command.phrase)}
+                >
+                  {command.phrase}
+                </button>
                 <p>{command.description}</p>
               </article>
             ))}
