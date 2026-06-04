@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AssistantSettings } from "../shared/types";
+import type { ActivityEvent, AssistantSettings, BackgroundSession } from "../shared/types";
 
 vi.mock("./sessionManager", () => {
   const sessions: unknown[] = [];
@@ -26,6 +26,19 @@ vi.mock("./sessionManager", () => {
     listBackgroundSessions: vi.fn(() => sessions)
   };
 });
+
+vi.mock("./activityFeed", () => ({
+  listActivityEvents: vi.fn(() => [
+    {
+      id: "activity-1",
+      kind: "worker",
+      title: "Worker queued",
+      detail: "Implement the worker cards started in execute mode.",
+      createdAt: "2026-06-03T00:00:00.000Z",
+      severity: "info"
+    }
+  ])
+}));
 
 const settings: AssistantSettings = {
   backend: "codex-cli",
@@ -73,6 +86,56 @@ describe("handlePlannerTurn", () => {
     const result = await handlePlannerTurn("What is the status?", [], settings);
 
     expect(result.assistantMessage.content).toContain("Workers:");
+    expect(result.assistantMessage.content).toContain("Recent activity:");
+    expect(result.assistantMessage.content).toContain("Worker queued");
+  });
+
+  it("formats worker and activity context for planner answers", async () => {
+    const { formatPlannerOperationalContext } = await import("./plannerTurn");
+    const sessions: BackgroundSession[] = [
+      {
+        id: "session-1",
+        title: "Voice UI polish",
+        status: "running",
+        mode: "execute",
+        prompt: "Improve the UI",
+        createdAt: "2026-06-03T00:00:00.000Z",
+        report: {
+          summary: "Adding clearer progress states.",
+          changed: "",
+          verified: "",
+          blockers: "",
+          next: ""
+        },
+        supervision: {
+          level: "stale",
+          reason: "Quiet for a while.",
+          userNeeded: false,
+          shouldNotify: false,
+          checkedAt: "2026-06-03T00:10:00.000Z"
+        },
+        focused: false
+      }
+    ];
+    const events: ActivityEvent[] = [
+      {
+        id: "activity-1",
+        kind: "inspection",
+        title: "Stale worker issue found",
+        detail: "Voice UI polish: TypeScript failed.",
+        createdAt: "2026-06-03T00:11:00.000Z",
+        severity: "warning",
+        sessionId: "session-1"
+      }
+    ];
+
+    const context = formatPlannerOperationalContext(sessions, events);
+
+    expect(context).toContain("Current worker snapshot");
+    expect(context).toContain("Voice UI polish: running");
+    expect(context).toContain("supervision=stale");
+    expect(context).toContain("Recent activity");
+    expect(context).toContain("Stale worker issue found");
   });
 
   it("asks structured planning questions before plan-mode delegation", async () => {

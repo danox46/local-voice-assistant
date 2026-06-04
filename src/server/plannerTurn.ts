@@ -12,6 +12,8 @@ import type {
   PlannerQuestion,
   TextTurnResponse
 } from "../shared/types";
+import type { ActivityEvent } from "../shared/types";
+import { listActivityEvents } from "./activityFeed";
 import { config } from "./config";
 import { sanitizeAssistantResponseForAudio } from "./responseSanitizer";
 import {
@@ -57,10 +59,43 @@ function sessionMode(settings: AssistantSettings): BackgroundSessionMode {
   return settings.codexMode === "plan" ? "plan" : "execute";
 }
 
-function formatStatusSummary(sessions: BackgroundSession[]) {
+function formatSessionLine(session: BackgroundSession) {
+  const supervision = session.supervision;
+  const supervisionText = supervision
+    ? `; supervision=${supervision.level}${supervision.userNeeded ? " user-needed" : ""}`
+    : "";
+  const summary = session.report.summary || session.report.blockers || session.report.next || "No summary yet.";
+  return `- ${session.title}: ${session.status} (${session.mode}${supervisionText}). ${summary}`;
+}
+
+function formatActivityLine(event: ActivityEvent) {
+  return `- ${event.title}: ${event.detail}`;
+}
+
+export function formatPlannerOperationalContext(
+  sessions: BackgroundSession[],
+  events: ActivityEvent[]
+) {
+  const visibleSessions = sessions.filter((session) => !session.archivedAt).slice(0, 6);
+  const recentEvents = events.slice(0, 6);
+  return [
+    "Current worker snapshot:",
+    visibleSessions.length ? visibleSessions.map(formatSessionLine).join("\n") : "- No visible workers.",
+    "",
+    "Recent activity:",
+    recentEvents.length ? recentEvents.map(formatActivityLine).join("\n") : "- No recent activity."
+  ].join("\n");
+}
+
+function formatStatusSummary(sessions: BackgroundSession[], events: ActivityEvent[]) {
   if (!sessions.length) {
     return {
-      fullAnswer: "No worker sessions are active yet. We can keep planning, or you can ask me to start a background task.",
+      fullAnswer: [
+        "No worker sessions are active yet. We can keep planning, or you can ask me to start a background task.",
+        events.length ? `Recent activity:\n${events.slice(0, 3).map(formatActivityLine).join("\n")}` : ""
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
       spokenSummary: "No worker sessions are active yet."
     };
   }
@@ -68,15 +103,22 @@ function formatStatusSummary(sessions: BackgroundSession[]) {
   const running = sessions.filter((session) => session.status === "running" || session.status === "queued");
   const blocked = sessions.filter((session) => session.status === "blocked" || session.status === "failed");
   const done = sessions.filter((session) => session.status === "done");
+  const userNeeded = sessions.filter((session) => session.supervision?.userNeeded);
+  const stale = sessions.filter((session) => session.supervision?.level === "stale");
   const latest = sessions[0];
   const fullAnswer = [
     `Workers: ${running.length} running, ${blocked.length} blocked or failed, ${done.length} done.`,
     latest
       ? `Latest: ${latest.title} is ${latest.status}. ${latest.report.summary || "No summary yet."}`
       : "",
+    stale.length ? `Quiet/stale: ${stale.map((session) => session.title).join(", ")}.` : "",
+    userNeeded.length
+      ? `Needs you: ${userNeeded.map((session) => `${session.title}: ${session.supervision.reason}`).join("; ")}`
+      : "",
     blocked.length
       ? `Needs attention: ${blocked.map((session) => `${session.title}: ${session.report.blockers}`).join("; ")}`
-      : ""
+      : "",
+    events.length ? `Recent activity:\n${events.slice(0, 4).map(formatActivityLine).join("\n")}` : ""
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -285,6 +327,7 @@ async function createMainPlannerAnswer(input: {
   transcript: string;
   history: ConversationMessage[];
   settings: AssistantSettings;
+  operationalContext: string;
   delegatedTitle?: string;
   delegatedMode?: BackgroundSessionMode;
 }) {
@@ -305,6 +348,8 @@ async function createMainPlannerAnswer(input: {
     input.delegatedTitle
       ? `A background ${input.delegatedMode} worker was started: ${input.delegatedTitle}.`
       : "No background worker was started for this turn.",
+    "Operational context:",
+    input.operationalContext,
     "Recent conversation:",
     formatHistory(input.history) || "(none yet)",
     "User said:",
@@ -388,13 +433,15 @@ export async function handlePlannerTurn(
 
   const userMessage = createMessage("user", cleanTranscript);
   const sessions = listBackgroundSessions();
+  const activityEvents = listActivityEvents();
+  const operationalContext = formatPlannerOperationalContext(sessions, activityEvents);
 
   if (
     statusPattern.test(cleanTranscript) &&
     !actionPattern.test(cleanTranscript) &&
     !answerPattern.test(cleanTranscript)
   ) {
-    const status = formatStatusSummary(sessions);
+    const status = formatStatusSummary(sessions, activityEvents);
     return {
       userMessage,
       assistantMessage: createMessage("assistant", status.fullAnswer),
@@ -434,6 +481,7 @@ export async function handlePlannerTurn(
       transcript: cleanTranscript,
       history,
       settings,
+      operationalContext,
       delegatedTitle: session.title,
       delegatedMode: session.mode
     });
@@ -449,7 +497,8 @@ export async function handlePlannerTurn(
   const fullAnswer = await createMainPlannerAnswer({
     transcript: cleanTranscript,
     history,
-    settings
+    settings,
+    operationalContext
   });
 
   return {

@@ -8,6 +8,7 @@ Local Voice Assistant is a local web app for talking to a planning agent, keepin
 - Optional wake phrase listener: say `Tensoon` while the app is idle to start a command.
 - Browser speech recognition with typed fallback.
 - Server-side planner context that survives refreshes and failed turns.
+- Planner answers that include current worker and Activity context in Codex mode.
 - Full response history on screen.
 - Markdown export for the main planning transcript.
 - Short spoken summaries with a playback queue to prevent overlapping notifications.
@@ -30,6 +31,8 @@ Worker modes:
 - `plan`: workers inspect and plan without editing
 
 When Codex mode is set to `plan`, the main agent can pause before delegation and ask structured planning questions. Those questions appear in the app as a planning panel and remain answerable by voice or typed fallback.
+
+In Codex mode, the planner receives a compact operational snapshot on every turn: visible workers, supervision state, and recent Activity. That lets status questions and follow-up planning use the current project state instead of relying only on remembered chat text.
 
 ### Gemini CLI
 

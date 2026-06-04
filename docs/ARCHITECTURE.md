@@ -69,6 +69,8 @@ Codex mode is a command center:
 
 Planner conversation is persisted in `work/planner-session.json`, which is intentionally ignored by Git.
 
+Every Codex planner turn also receives a compact operational context built from the current worker list and recent Activity events. This keeps conversational answers grounded in the live command-center state, including supervision labels and recent inspections, without stuffing raw logs into the chat.
+
 The planner transcript can be exported as markdown through `GET /api/planner-session/export`, and the client toolbar downloads that file as `planner-session.md`.
 
 Planning questions are returned as a `plannerPrompt` payload from `POST /api/text-turn` or `POST /api/audio-text-turn`. The client renders the payload as a planning panel and keeps normal voice/text entry available for answers.
