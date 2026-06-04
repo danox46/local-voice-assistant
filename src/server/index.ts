@@ -23,6 +23,7 @@ import {
   getPlannerContextMessages,
   getPlannerSession,
   recordPlannerFailure,
+  retryLastPlannerTurn,
   resetPlannerSession
 } from "./plannerSessionStore";
 import { handleTextTurn } from "./textTurn";
@@ -294,6 +295,10 @@ app.get("/api/planner-session/export", (_req, res) => {
 
 app.post("/api/planner-session/reset", (_req, res) => {
   res.json({ session: resetPlannerSession() });
+});
+
+app.post("/api/planner-session/retry-last", (_req, res) => {
+  res.json({ session: retryLastPlannerTurn() });
 });
 
 app.post("/api/sessions", (req, res) => {

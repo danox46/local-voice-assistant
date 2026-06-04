@@ -37,6 +37,7 @@ import {
   listActivity,
   listSessions,
   resetPlannerSession,
+  retryLastPlannerTurn,
   sendAudioTextTurn,
   sendTextTurn,
   sendVoiceTurn
@@ -291,6 +292,17 @@ export function containsWakePhrase(transcript: string, wakePhrase = WAKE_PHRASE)
   const expected = wakePhrase.toLowerCase().replace(/\s+/g, "");
   const likelyVariants = [expected, "tension", "tensoon", "tenson", "tensun", "tenzone"];
   return likelyVariants.some((variant) => compact.includes(variant)) || normalized.includes("ten soon");
+}
+
+export function historyWithoutLastTurn(messages: ConversationMessage[]) {
+  const next = [...messages];
+  if (next.at(-1)?.role === "assistant") {
+    next.pop();
+  }
+  if (next.at(-1)?.role === "user") {
+    next.pop();
+  }
+  return next;
 }
 
 export function App() {
@@ -931,6 +943,43 @@ export function App() {
     }
   }
 
+  async function retryLastTurn() {
+    const transcript = lastUserMessage?.content.trim();
+    if (!transcript) return;
+    const retryHistory = historyWithoutLastTurn(messages);
+
+    setUiState("thinking");
+    setError("");
+    try {
+      activeTurnAbortRef.current = new AbortController();
+      if (settings.backend === "codex-cli") {
+        const plannerSession = await retryLastPlannerTurn();
+        setMessages(plannerSession.messages);
+      }
+      const turn = await sendTextTurn({
+        transcript,
+        history: retryHistory,
+        settings,
+        signal: activeTurnAbortRef.current.signal
+      });
+      activeTurnAbortRef.current = null;
+      updateTypedPrompt("");
+      setLiveTranscript(transcript);
+      applyTextTurn(turn);
+      void refreshSessions();
+
+      if (!muted) {
+        enqueueBrowserSummary(turn.spokenSummary);
+      } else {
+        setUiState("idle");
+      }
+    } catch (err) {
+      activeTurnAbortRef.current = null;
+      setUiState("error");
+      setError(err instanceof Error ? err.message : "Retry failed. Please try again.");
+    }
+  }
+
   async function cancelActiveTurn() {
     activeTurnAbortRef.current?.abort();
     activeTurnAbortRef.current = null;
@@ -1380,6 +1429,15 @@ export function App() {
                     type="button"
                   >
                     Clear draft
+                  </button>
+                  <button
+                    className="small-button"
+                    disabled={!lastUserMessage || isBusy}
+                    onClick={() => void retryLastTurn()}
+                    type="button"
+                  >
+                    <RotateCcw size={14} />
+                    Retry last turn
                   </button>
                 </div>
               </div>

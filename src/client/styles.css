@@ -671,6 +671,10 @@ h2 {
 }
 
 .small-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   min-height: 34px;
   border: 1px solid #cbd4c7;
   border-radius: 8px;

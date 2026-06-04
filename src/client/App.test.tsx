@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   App,
   containsWakePhrase,
+  historyWithoutLastTurn,
   mergeStoredSettings,
   mergeStoredUiPrefs,
   splitSpeechIntoChunks
@@ -55,6 +56,13 @@ describe("App", () => {
       title: "Main planning session",
       createdAt: "2026-06-02T00:00:00.000Z",
       updatedAt: "2026-06-02T00:00:00.000Z",
+      messages: []
+    });
+    vi.mocked(api.retryLastPlannerTurn).mockResolvedValue({
+      id: "main",
+      title: "Main planning session",
+      createdAt: "2026-06-02T00:00:00.000Z",
+      updatedAt: "2026-06-02T00:01:00.000Z",
       messages: []
     });
   });
@@ -128,6 +136,81 @@ describe("App", () => {
     expect(window.localStorage.getItem("local-voice-assistant.typed-draft.v1")).toBeNull();
   });
 
+  it("retries the latest planner turn after removing it from saved context", async () => {
+    const user = userEvent.setup();
+    const savedMessages = [
+      {
+        id: "user-1",
+        role: "user" as const,
+        content: "Build the voice cockpit.",
+        createdAt: "2026-06-02T00:00:00.000Z"
+      },
+      {
+        id: "assistant-1",
+        role: "assistant" as const,
+        content: "Old answer.",
+        createdAt: "2026-06-02T00:00:30.000Z"
+      }
+    ];
+    vi.mocked(api.getPlannerSession).mockResolvedValueOnce({
+      id: "main",
+      title: "Main planning session",
+      createdAt: "2026-06-02T00:00:00.000Z",
+      updatedAt: "2026-06-02T00:00:30.000Z",
+      messages: savedMessages
+    });
+    vi.mocked(api.sendTextTurn).mockResolvedValueOnce({
+      userMessage: {
+        id: "user-2",
+        role: "user",
+        content: "Build the voice cockpit.",
+        createdAt: "2026-06-02T00:01:00.000Z"
+      },
+      assistantMessage: {
+        id: "assistant-2",
+        role: "assistant",
+        content: "Better answer.",
+        createdAt: "2026-06-02T00:01:30.000Z"
+      },
+      spokenSummary: "Better answer.",
+      settings,
+      plannerSession: {
+        id: "main",
+        title: "Main planning session",
+        createdAt: "2026-06-02T00:00:00.000Z",
+        updatedAt: "2026-06-02T00:01:30.000Z",
+        messages: [
+          {
+            id: "user-2",
+            role: "user",
+            content: "Build the voice cockpit.",
+            createdAt: "2026-06-02T00:01:00.000Z"
+          },
+          {
+            id: "assistant-2",
+            role: "assistant",
+            content: "Better answer.",
+            createdAt: "2026-06-02T00:01:30.000Z"
+          }
+        ]
+      }
+    });
+
+    render(<App />);
+
+    await screen.findByText("Old answer.");
+    await user.click(screen.getByRole("button", { name: /Retry last turn/ }));
+
+    await waitFor(() => expect(api.retryLastPlannerTurn).toHaveBeenCalled());
+    expect(api.sendTextTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transcript: "Build the voice cockpit.",
+        history: []
+      })
+    );
+    await waitFor(() => expect(screen.getAllByText("Better answer.").length).toBeGreaterThan(0));
+  });
+
   it("shows the setup message when Codex CLI is missing", async () => {
     vi.mocked(api.getHealth).mockResolvedValueOnce({
       ok: true,
@@ -162,6 +245,38 @@ describe("App", () => {
     expect(containsWakePhrase("hey ten soon start listening")).toBe(true);
     expect(containsWakePhrase("tension please")).toBe(true);
     expect(containsWakePhrase("keep waiting for now")).toBe(false);
+  });
+
+  it("removes the latest user and assistant pair from local retry history", () => {
+    const trimmed = historyWithoutLastTurn([
+      {
+        id: "user-1",
+        role: "user",
+        content: "Keep this",
+        createdAt: "2026-06-02T00:00:00.000Z"
+      },
+      {
+        id: "assistant-1",
+        role: "assistant",
+        content: "Kept",
+        createdAt: "2026-06-02T00:00:30.000Z"
+      },
+      {
+        id: "user-2",
+        role: "user",
+        content: "Retry this",
+        createdAt: "2026-06-02T00:01:00.000Z"
+      },
+      {
+        id: "assistant-2",
+        role: "assistant",
+        content: "Remove this",
+        createdAt: "2026-06-02T00:01:30.000Z"
+      }
+    ]);
+
+    expect(trimmed).toHaveLength(2);
+    expect(trimmed.at(-1)?.content).toBe("Kept");
   });
 
   it("merges valid stored assistant settings over server defaults", () => {

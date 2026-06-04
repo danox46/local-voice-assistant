@@ -55,6 +55,15 @@ export async function resetPlannerSession(): Promise<PlannerSession> {
   return body.session;
 }
 
+export async function retryLastPlannerTurn(): Promise<PlannerSession> {
+  const response = await fetch(`${API_BASE_URL}/api/planner-session/retry-last`, {
+    method: "POST"
+  });
+  if (!response.ok) throw new Error(await parseApiError(response));
+  const body = (await response.json()) as { session: PlannerSession };
+  return body.session;
+}
+
 export async function exportPlannerSession(): Promise<Blob> {
   const response = await fetch(`${API_BASE_URL}/api/planner-session/export`);
   if (!response.ok) throw new Error(await parseApiError(response));

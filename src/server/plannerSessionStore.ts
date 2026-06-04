@@ -117,6 +117,25 @@ export function appendPlannerTurn(
   });
 }
 
+export function removeLastPlannerTurnFromSession(session: PlannerSession): PlannerSession {
+  const messages = [...session.messages];
+  if (messages.at(-1)?.role === "assistant") {
+    messages.pop();
+  }
+  if (messages.at(-1)?.role === "user") {
+    messages.pop();
+  }
+  return {
+    ...session,
+    lastError: undefined,
+    messages
+  };
+}
+
+export function retryLastPlannerTurn() {
+  return writeSession(removeLastPlannerTurnFromSession(readSession()));
+}
+
 export function recordPlannerFailure(transcript: string, errorMessage: string) {
   const session = readSession();
   const userMessage = createMessage("user", transcript.trim());

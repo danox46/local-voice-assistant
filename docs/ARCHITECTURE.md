@@ -49,6 +49,7 @@ The Express server owns API keys and local CLI execution. It exposes:
 - `GET /api/planner-session`
 - `GET /api/planner-session/export`
 - `POST /api/planner-session/reset`
+- `POST /api/planner-session/retry-last`
 - `GET /api/sessions`
 - `GET /api/sessions/:id`
 - `POST /api/sessions`
@@ -72,6 +73,8 @@ Planner conversation is persisted in `work/planner-session.json`, which is inten
 Every Codex planner turn also receives a compact operational context built from the current worker list and recent Activity events. This keeps conversational answers grounded in the live command-center state, including supervision labels and recent inspections, without stuffing raw logs into the chat.
 
 The planner transcript can be exported as markdown through `GET /api/planner-session/export`, and the client toolbar downloads that file as `planner-session.md`.
+
+The retry-last-turn flow calls `POST /api/planner-session/retry-last` before resending the latest user prompt in Codex mode. The server removes the latest user/assistant pair from persisted planner memory, preserving earlier context while replacing the bad or failed answer.
 
 Planning questions are returned as a `plannerPrompt` payload from `POST /api/text-turn` or `POST /api/audio-text-turn`. The client renders the payload as a planning panel and keeps normal voice/text entry available for answers.
 

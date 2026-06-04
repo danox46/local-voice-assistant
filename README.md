@@ -9,6 +9,7 @@ Local Voice Assistant is a local web app for talking to a planning agent, keepin
 - Browser speech recognition with typed fallback.
 - Server-side planner context that survives refreshes and failed turns.
 - Planner answers that include current worker and Activity context in Codex mode.
+- Retry-last-turn control that removes the latest saved planner turn before resending.
 - Full response history on screen.
 - Markdown export for the main planning transcript.
 - Short spoken summaries with a playback queue to prevent overlapping notifications.
@@ -109,6 +110,8 @@ Completed, blocked, failed, and cancelled worker cards are restored from saved r
 The browser stores local UI preferences such as backend, Codex plan/execute mode, transcription mode, assistant style, wake phrase, mute, and volume. Server defaults from `.env` are used first, then valid browser preferences are applied on top.
 
 The typed fallback composer also keeps an unsent local draft across refreshes. Use **Clear draft** to discard it.
+
+Use **Retry last turn** when the latest answer was cut off, awkward, or failed. In Codex mode, the app removes the latest saved user/assistant pair from planner memory before resending the same user request, so the retry is not polluted by the answer you are replacing.
 
 `work/` is ignored by Git because it may contain private transcripts, project context, and local execution details.
 
