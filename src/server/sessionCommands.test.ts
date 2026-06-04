@@ -172,6 +172,84 @@ describe("handleSessionCommand", () => {
     expect(sessions[0].focused).toBe(true);
   });
 
+  it("continues only agent-actionable blocked workers by voice", async () => {
+    const { handleSessionCommand } = await import("./sessionCommands");
+    sessions.push(
+      makeSession({
+        id: "agent-actionable",
+        title: "Agent actionable worker",
+        status: "failed",
+        supervision: {
+          level: "auto-actionable",
+          reason: "TypeScript error can be fixed by the agent.",
+          userNeeded: false,
+          shouldNotify: false,
+          checkedAt: "2026-06-03T10:00:00.000Z"
+        },
+        report: {
+          summary: "Build failed.",
+          changed: "None.",
+          verified: "npm run build failed.",
+          blockers: "TypeScript error.",
+          next: "Fix the type error."
+        }
+      }),
+      makeSession({
+        id: "user-needed",
+        title: "User needed worker",
+        status: "blocked",
+        supervision: {
+          level: "needs-user",
+          reason: "Needs login approval.",
+          userNeeded: true,
+          shouldNotify: true,
+          checkedAt: "2026-06-03T10:00:00.000Z"
+        },
+        report: {
+          summary: "Login blocked.",
+          changed: "None.",
+          verified: "Tried auth check.",
+          blockers: "Needs login approval.",
+          next: "Ask the user to approve."
+        }
+      })
+    );
+
+    const result = handleSessionCommand("Continue actionable blockers", [], settings);
+
+    expect(result?.assistantMessage.content).toContain("Started 1 follow-up worker");
+    expect(result?.assistantMessage.content).toContain("Resolve Agent actionable worker");
+    expect(result?.assistantMessage.content).not.toContain("Resolve User needed worker");
+    expect(sessions[0].title).toBe("Resolve Agent actionable worker");
+    expect(sessions[0].focused).toBe(true);
+    expect(recordActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Actionable blockers continued" })
+    );
+  });
+
+  it("does not continue user-needed blockers automatically", async () => {
+    const { handleSessionCommand } = await import("./sessionCommands");
+    sessions.push(
+      makeSession({
+        id: "user-needed",
+        title: "User needed worker",
+        status: "blocked",
+        supervision: {
+          level: "needs-user",
+          reason: "Needs API key.",
+          userNeeded: true,
+          shouldNotify: true,
+          checkedAt: "2026-06-03T10:00:00.000Z"
+        }
+      })
+    );
+
+    const result = handleSessionCommand("Fix the blocked workers", [], settings);
+
+    expect(result?.assistantMessage.content).toContain("do not see any visible blocked or failed workers");
+    expect(sessions).toHaveLength(1);
+  });
+
   it("switches Codex workers into plan-only mode by voice", async () => {
     const { handleSessionCommand } = await import("./sessionCommands");
 
@@ -210,6 +288,7 @@ describe("handleSessionCommand", () => {
 
     expect(result?.assistantMessage.content).toContain("focus the latest worker");
     expect(result?.assistantMessage.content).toContain("switch to plan mode");
+    expect(result?.assistantMessage.content).toContain("continue actionable blockers");
     expect(result?.spokenSummary).toContain("Useful commands");
     expect(recordActivity).toHaveBeenCalledWith(
       expect.objectContaining({ title: "Voice command help requested" })

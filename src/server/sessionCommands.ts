@@ -45,6 +45,13 @@ function completedSessions() {
   return visibleSessions().filter((session) => session.status === "done" || session.status === "cancelled");
 }
 
+function agentActionableBlockedSessions() {
+  return visibleSessions().filter((session) => {
+    if (session.status !== "blocked" && session.status !== "failed") return false;
+    return !session.supervision.userNeeded && session.supervision.level === "auto-actionable";
+  });
+}
+
 function commandResponse(input: {
   transcript: string;
   answer: string;
@@ -149,7 +156,7 @@ export function handleSessionCommand(
     const answer = [
       "You can talk normally for planning or brainstorming. For direct cockpit controls, try:",
       "",
-      commandCatalogSummary(11)
+      commandCatalogSummary(12)
     ].join("\n");
     recordActivity({
       kind: "system",
@@ -162,7 +169,7 @@ export function handleSessionCommand(
       settings,
       answer,
       spokenSummary:
-        "You can talk normally for planning. Useful commands include: switch to plan mode, focus the latest worker, inspect the current worker, continue the focused session, and start a new chat."
+        "You can talk normally for planning. Useful commands include: switch to plan mode, focus the latest worker, inspect the current worker, continue actionable blockers, and start a new chat."
     });
   }
 
@@ -372,6 +379,51 @@ export function handleSessionCommand(
         ? `Cancelled worker: ${session.title}.`
         : `${session.title} is not running, so there was nothing to cancel.`,
       spokenSummary: cancelled ? `Cancelled ${session.title}.` : `${session.title} is not running.`
+    });
+  }
+
+  if (
+    /\b(continue|resume|retry|fix|resolve|follow up|start next)\b/.test(clean) &&
+    /\b(actionable|blocked|blockers|failed|failures|issues|problems)\b/.test(clean)
+  ) {
+    const actionableSessions = agentActionableBlockedSessions().slice(0, 3);
+    if (!actionableSessions.length) {
+      return commandResponse({
+        transcript: original,
+        settings,
+        answer:
+          "I do not see any visible blocked or failed workers that are safe to continue automatically. If a worker needs credentials, approval, or a choice from you, I will keep it as user-needed instead.",
+        spokenSummary: "No agent-actionable blocked workers are ready to continue."
+      });
+    }
+
+    const nextSessions = actionableSessions.map((session) =>
+      createBackgroundSession({
+        title: `Resolve ${session.title}`.slice(0, 120),
+        mode: modeFromSettings(settings),
+        prompt: followUpPrompt(session, history, original)
+      })
+    );
+    const newest = nextSessions[0];
+    focusBackgroundSession(newest.id);
+    recordActivity({
+      kind: "worker",
+      title: "Actionable blockers continued",
+      detail: `Started ${nextSessions.length} follow-up worker${nextSessions.length === 1 ? "" : "s"} for agent-actionable blockers.`,
+      sessionId: newest.id,
+      severity: "warning"
+    });
+    const answer = [
+      `Started ${nextSessions.length} follow-up worker${nextSessions.length === 1 ? "" : "s"} for agent-actionable blockers:`,
+      ...nextSessions.map((session) => `- ${session.title} (${session.mode} mode)`),
+      "",
+      "I skipped anything marked user-needed, because those require your credentials, approval, or a decision."
+    ].join("\n");
+    return commandResponse({
+      transcript: original,
+      settings,
+      answer,
+      spokenSummary: `Started ${nextSessions.length} follow-up worker${nextSessions.length === 1 ? "" : "s"} for actionable blockers. User-needed blockers were left alone.`
     });
   }
 

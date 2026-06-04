@@ -75,7 +75,7 @@ The planner transcript can be exported as markdown through `GET /api/planner-ses
 
 Planning questions are returned as a `plannerPrompt` payload from `POST /api/text-turn` or `POST /api/audio-text-turn`. The client renders the payload as a planning panel and keeps normal voice/text entry available for answers.
 
-The session command router handles narrow operational phrases such as switching Codex plan/execute mode, reporting the current mode, starting a fresh planning chat, recapping the saved planning session, focusing the latest worker, inspecting the current worker, continuing the focused session, cancelling a current worker, and archiving completed workers. Unrecognized or conversational turns fall through to the main planner so brainstorming is not swallowed by command matching.
+The session command router handles narrow operational phrases such as switching Codex plan/execute mode, reporting the current mode, starting a fresh planning chat, recapping the saved planning session, focusing the latest worker, inspecting the current worker, continuing the focused session, continuing agent-actionable blockers, cancelling a current worker, and archiving completed workers. Unrecognized or conversational turns fall through to the main planner so brainstorming is not swallowed by command matching.
 
 Command responses can return updated `settings`; the client applies those settings after the turn so voice commands and the visible settings drawer remain in sync.
 
@@ -88,6 +88,8 @@ Command responses can return updated `settings`; the client applies those settin
 - Technical failures are marked auto-actionable so the agent can continue without asking the user for obvious fixes.
 
 When `GET /api/sessions` refreshes worker state, stale sessions are automatically inspected once. The server records an Activity event only when captured output includes a concrete user-needed or technical issue. Plain silence remains quiet, which keeps polling from turning into noisy false alarms.
+
+The voice command `continue actionable blockers` starts follow-up workers only for visible blocked or failed sessions whose supervision state is `auto-actionable`. Sessions marked `needs-user` are skipped so credentials, approvals, and owner choices are not silently bypassed.
 
 The `POST /api/sessions/:id/inspect` endpoint reads captured worker output or final raw output and returns a `SessionInspection`. The client uses it for the worker-card Inspect action. Inspections only speak when a user-needed issue is found; quiet or agent-actionable findings remain visible in the card/history surface.
 

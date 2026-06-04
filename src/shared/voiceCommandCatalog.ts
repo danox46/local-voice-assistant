@@ -52,6 +52,11 @@ export const voiceCommandCatalog: VoiceCommandExample[] = [
   },
   {
     category: "workers",
+    phrase: "continue actionable blockers",
+    description: "Start follow-up workers only for blocked work that does not need the user."
+  },
+  {
+    category: "workers",
     phrase: "cancel the current worker",
     description: "Stop the focused or latest running worker."
   },

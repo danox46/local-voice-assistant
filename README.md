@@ -137,6 +137,7 @@ Worker cards also support:
 
 - **Focus**: make a worker the active context for follow-up voice prompts
 - **Continue**: start a follow-up worker from the current report
+- **Continue actionable blockers**: start follow-up workers for technical blockers while leaving user-needed blockers alone
 - **Archive**: hide completed or stopped sessions from the main dashboard
 - **Show archived**: bring archived sessions back into view
 
@@ -147,6 +148,7 @@ The same controls are available by voice in Codex mode:
 - `focus the latest worker`
 - `inspect the current worker`
 - `continue the focused session`
+- `continue actionable blockers`
 - `cancel the current worker`
 - `archive completed workers`
 - `switch to plan mode`
