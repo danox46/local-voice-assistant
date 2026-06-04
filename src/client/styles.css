@@ -163,6 +163,24 @@ h2 {
   opacity: 0.45;
 }
 
+.secondary-button {
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid #cbd4c7;
+  border-radius: 8px;
+  color: #23342c;
+  background: #fff;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.secondary-button:hover,
+.icon-button:hover:not(:disabled) {
+  border-color: #83a08f;
+  background: #f6f8f5;
+}
+
 .talk-zone {
   display: grid;
   place-items: center;

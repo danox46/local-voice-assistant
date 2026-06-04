@@ -242,6 +242,14 @@ function readinessCopy(ready: boolean) {
   return ready ? "Ready" : "Needs setup";
 }
 
+function browserSpeechSupported() {
+  return (
+    typeof window !== "undefined" &&
+    "speechSynthesis" in window &&
+    "SpeechSynthesisUtterance" in window
+  );
+}
+
 export function splitSpeechIntoChunks(text: string, maxChunkLength = 180) {
   const clean = text.replace(/\s+/g, " ").trim();
   if (!clean) return [];
@@ -569,6 +577,12 @@ export function App() {
       return;
     }
 
+    if (!browserSpeechSupported()) {
+      setError("This browser is not exposing text-to-speech. Try Chrome/Edge, or switch to OpenAI voice mode.");
+      setUiState("error");
+      return;
+    }
+
     const token = ++speechTokenRef.current;
     speechActiveRef.current = true;
     setUiState("speaking");
@@ -593,9 +607,13 @@ export function App() {
     speechTimeoutRef.current = window.setTimeout(finish, estimatedMs);
   }
 
-  function enqueueBrowserSummary(summary: string, options: { replace?: boolean } = {}) {
+  function enqueueBrowserSummary(
+    summary: string,
+    options: { replace?: boolean; force?: boolean } = {}
+  ) {
     const cleanSummary = summary.trim();
-    if (!cleanSummary || mutedRef.current) return;
+    if (!cleanSummary) return;
+    if (mutedRef.current && !options.force) return;
 
     if (options.replace) {
       speechQueueRef.current = [];
@@ -607,6 +625,17 @@ export function App() {
 
     speechQueueRef.current.push(...splitSpeechIntoChunks(cleanSummary));
     playNextBrowserSummary();
+  }
+
+  function testBrowserVoice() {
+    const sample = "Voice test. If you can hear this, spoken summaries are working.";
+    setError("");
+    setSpokenSummary(sample);
+    mutedRef.current = false;
+    volumeRef.current = Math.max(volumeRef.current, 0.75);
+    setMuted(false);
+    setVolume((current) => Math.max(current, 0.75));
+    enqueueBrowserSummary(sample, { replace: true, force: true });
   }
 
   function repeatLastResponse() {
@@ -1705,6 +1734,14 @@ export function App() {
             </p>
           </div>
           <div className="audio-controls">
+            <button
+              className="secondary-button"
+              onClick={testBrowserVoice}
+              title="Test voice"
+              type="button"
+            >
+              Test voice
+            </button>
             <button
               className="icon-button"
               disabled={!audioUrl && !spokenSummary}

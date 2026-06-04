@@ -378,6 +378,51 @@ describe("App", () => {
     speak.mockRestore();
   });
 
+  it("tests browser voice output from the audio strip", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      "local-voice-assistant.ui-prefs.v1",
+      JSON.stringify({ muted: true, volume: 0, wakeEnabled: true })
+    );
+    Object.defineProperty(window, "speechSynthesis", {
+      configurable: true,
+      value: {
+        cancel: vi.fn(),
+        speak: vi.fn()
+      }
+    });
+    vi.stubGlobal(
+      "SpeechSynthesisUtterance",
+      class {
+        text: string;
+        volume = 1;
+        rate = 1;
+        onend: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+
+        constructor(text: string) {
+          this.text = text;
+        }
+      }
+    );
+    const speak = vi
+      .spyOn(window.speechSynthesis, "speak")
+      .mockImplementation(() => undefined);
+
+    render(<App />);
+
+    await screen.findByText("Ready");
+    await user.click(screen.getByRole("button", { name: "Test voice" }));
+
+    await waitFor(() => expect(speak).toHaveBeenCalled());
+    expect(screen.getByText(/Voice test/)).toBeInTheDocument();
+    expect(Number((screen.getByLabelText("Volume") as HTMLInputElement).value)).toBeGreaterThanOrEqual(
+      0.75
+    );
+
+    speak.mockRestore();
+  });
+
   it("shows the setup message when Codex CLI is missing", async () => {
     vi.mocked(api.getHealth).mockResolvedValueOnce({
       ok: true,
