@@ -25,6 +25,8 @@ The React app handles microphone permission, push-to-talk controls, wake phrase 
 
 Spoken notifications pass through a playback queue. Long summaries are split into short chunks to avoid browser `SpeechSynthesisUtterance` cutoffs and overlapping worker notifications.
 
+Settings are initialized from the server defaults and then merged with validated browser `localStorage` preferences. This keeps user choices such as backend, Codex plan/execute mode, transcription mode, assistant style, wake phrase, mute, and volume stable across page refreshes without trusting malformed saved values.
+
 ## Wake Phrase
 
 The wake phrase is a browser-speech idle listener. When enabled, the client starts a lightweight recognition loop only while the app is idle or in an error-ready state. If it hears `Tensoon` or likely transcript variants, it stops the wake listener and starts the normal recording flow.

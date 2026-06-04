@@ -1,6 +1,12 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { App, containsWakePhrase, splitSpeechIntoChunks } from "./App";
+import {
+  App,
+  containsWakePhrase,
+  mergeStoredSettings,
+  mergeStoredUiPrefs,
+  splitSpeechIntoChunks
+} from "./App";
 import * as api from "./api";
 
 vi.mock("./api");
@@ -95,5 +101,49 @@ describe("App", () => {
     expect(containsWakePhrase("hey ten soon start listening")).toBe(true);
     expect(containsWakePhrase("tension please")).toBe(true);
     expect(containsWakePhrase("keep waiting for now")).toBe(false);
+  });
+
+  it("merges valid stored assistant settings over server defaults", () => {
+    const merged = mergeStoredSettings(
+      settings,
+      JSON.stringify({
+        backend: "gemini-cli",
+        codexMode: "plan",
+        transcriptionMode: "gemini-cli-audio",
+        summaryWords: 500,
+        assistantStyle: "More direct"
+      })
+    );
+
+    expect(merged.backend).toBe("gemini-cli");
+    expect(merged.codexMode).toBe("plan");
+    expect(merged.transcriptionMode).toBe("gemini-cli-audio");
+    expect(merged.summaryWords).toBe(100);
+    expect(merged.assistantStyle).toBe("More direct");
+  });
+
+  it("ignores invalid stored assistant settings", () => {
+    const merged = mergeStoredSettings(
+      settings,
+      JSON.stringify({
+        backend: "bad-backend",
+        codexMode: "mutate",
+        summaryWords: "loud"
+      })
+    );
+
+    expect(merged.backend).toBe(settings.backend);
+    expect(merged.codexMode).toBe(settings.codexMode);
+    expect(merged.summaryWords).toBe(settings.summaryWords);
+  });
+
+  it("merges and clamps stored UI preferences", () => {
+    expect(
+      mergeStoredUiPrefs(JSON.stringify({ muted: true, wakeEnabled: false, volume: 3 }))
+    ).toEqual({
+      muted: true,
+      wakeEnabled: false,
+      volume: 1
+    });
   });
 });

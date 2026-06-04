@@ -101,6 +101,8 @@ The app writes runtime state to `work/`, including:
 
 Completed, blocked, failed, and cancelled worker cards are restored from saved reports after a server restart. Running processes are not resumed; start a follow-up worker when a restarted session needs more work.
 
+The browser stores local UI preferences such as backend, Codex plan/execute mode, transcription mode, assistant style, wake phrase, mute, and volume. Server defaults from `.env` are used first, then valid browser preferences are applied on top.
+
 `work/` is ignored by Git because it may contain private transcripts, project context, and local execution details.
 
 ## Wake Phrase

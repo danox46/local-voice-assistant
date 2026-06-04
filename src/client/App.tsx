@@ -43,6 +43,8 @@ import { MicActivityMonitor, PushToTalkRecorder, PushToTalkSpeechRecognizer } fr
 type UiState = "loading" | "idle" | "recording" | "thinking" | "speaking" | "error";
 const AUTO_STOP_AFTER_MS = 3500;
 const WAKE_PHRASE = "tensoon";
+const SETTINGS_STORAGE_KEY = "local-voice-assistant.settings.v1";
+const UI_PREFS_STORAGE_KEY = "local-voice-assistant.ui-prefs.v1";
 
 const fallbackSettings: AssistantSettings = {
   backend: "codex-cli",
@@ -57,6 +59,112 @@ const fallbackSettings: AssistantSettings = {
   voice: "marin",
   summaryWords: 45
 };
+
+interface UiPrefs {
+  muted: boolean;
+  volume: number;
+  wakeEnabled: boolean;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function coerceStoredSettings(defaults: AssistantSettings, stored: unknown): AssistantSettings {
+  if (!isObject(stored)) return defaults;
+  const next = { ...defaults };
+  if (stored.backend === "codex-cli" || stored.backend === "gemini-cli" || stored.backend === "openai") {
+    next.backend = stored.backend;
+  }
+  if (stored.codexMode === "execute" || stored.codexMode === "plan") {
+    next.codexMode = stored.codexMode;
+  }
+  if (
+    stored.transcriptionMode === "gemini-cli-audio" ||
+    stored.transcriptionMode === "browser" ||
+    stored.transcriptionMode === "openai-cloud"
+  ) {
+    next.transcriptionMode = stored.transcriptionMode;
+  }
+  if (isString(stored.speechLanguage)) next.speechLanguage = stored.speechLanguage;
+  if (isString(stored.assistantStyle)) next.assistantStyle = stored.assistantStyle;
+  if (isString(stored.assistantModel)) next.assistantModel = stored.assistantModel;
+  if (isString(stored.transcribeModel)) next.transcribeModel = stored.transcribeModel;
+  if (isString(stored.ttsModel)) next.ttsModel = stored.ttsModel;
+  if (isString(stored.voice)) next.voice = stored.voice;
+  if (typeof stored.summaryWords === "number" && Number.isFinite(stored.summaryWords)) {
+    next.summaryWords = Math.min(100, Math.max(15, Math.round(stored.summaryWords)));
+  }
+  return next;
+}
+
+function coerceStoredUiPrefs(stored: unknown): UiPrefs {
+  const defaults: UiPrefs = { muted: false, volume: 0.9, wakeEnabled: true };
+  if (!isObject(stored)) return defaults;
+  return {
+    muted: typeof stored.muted === "boolean" ? stored.muted : defaults.muted,
+    wakeEnabled:
+      typeof stored.wakeEnabled === "boolean" ? stored.wakeEnabled : defaults.wakeEnabled,
+    volume:
+      typeof stored.volume === "number" && Number.isFinite(stored.volume)
+        ? Math.min(1, Math.max(0, stored.volume))
+        : defaults.volume
+  };
+}
+
+export function mergeStoredSettings(defaults: AssistantSettings, raw: string | null) {
+  if (!raw) return defaults;
+  try {
+    return coerceStoredSettings(defaults, JSON.parse(raw));
+  } catch {
+    return defaults;
+  }
+}
+
+export function mergeStoredUiPrefs(raw: string | null): UiPrefs {
+  if (!raw) return coerceStoredUiPrefs(null);
+  try {
+    return coerceStoredUiPrefs(JSON.parse(raw));
+  } catch {
+    return coerceStoredUiPrefs(null);
+  }
+}
+
+function loadStoredSettings(defaults: AssistantSettings) {
+  try {
+    return mergeStoredSettings(defaults, window.localStorage.getItem(SETTINGS_STORAGE_KEY));
+  } catch {
+    return defaults;
+  }
+}
+
+function loadStoredUiPrefs() {
+  try {
+    return mergeStoredUiPrefs(window.localStorage.getItem(UI_PREFS_STORAGE_KEY));
+  } catch {
+    return mergeStoredUiPrefs(null);
+  }
+}
+
+function saveStoredSettings(settings: AssistantSettings) {
+  try {
+    window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // Local storage can be unavailable in private or restricted browser contexts.
+  }
+}
+
+function saveStoredUiPrefs(prefs: UiPrefs) {
+  try {
+    window.localStorage.setItem(UI_PREFS_STORAGE_KEY, JSON.stringify(prefs));
+  } catch {
+    // Best effort only; the app remains usable without persistence.
+  }
+}
 
 function audioUrlFromResponse(turn: VoiceTurnResponse) {
   const bytes = Uint8Array.from(atob(turn.audioBase64), (char) => char.charCodeAt(0));
@@ -241,8 +349,13 @@ export function App() {
   const canUseWakePhrase = PushToTalkSpeechRecognizer.isSupported();
   const wakeIsArmed = wakeEnabled && canUseWakePhrase && wakeStatus === "listening";
 
+  function updateSettings(nextSettings: AssistantSettings) {
+    setSettings(nextSettings);
+    saveStoredSettings(nextSettings);
+  }
+
   function applyTextTurn(turn: TextTurnResponse) {
-    setSettings(turn.settings);
+    updateSettings(turn.settings);
     setSpokenSummary(turn.spokenSummary);
     setPlannerPrompt(turn.plannerPrompt ?? null);
     setMessages((current) =>
@@ -437,6 +550,10 @@ export function App() {
   }, [wakeEnabled]);
 
   useEffect(() => {
+    saveStoredUiPrefs({ muted, volume, wakeEnabled });
+  }, [muted, volume, wakeEnabled]);
+
+  useEffect(() => {
     if (!wakeEnabled) {
       stopWakeListener();
       setWakeStatus("off");
@@ -464,7 +581,12 @@ export function App() {
   useEffect(() => {
     getHealth()
       .then(async (health) => {
-        setSettings(health.settings);
+      const storedSettings = loadStoredSettings(health.settings);
+      const storedPrefs = loadStoredUiPrefs();
+      setSettings(storedSettings);
+      setMuted(storedPrefs.muted);
+      setVolume(storedPrefs.volume);
+      setWakeEnabled(storedPrefs.wakeEnabled);
         setHasOpenAiKey(health.hasOpenAiKey);
         setHasGeminiCli(health.hasGeminiCli);
         setHasCodexCli(health.hasCodexCli);
@@ -700,7 +822,7 @@ export function App() {
       const nextUrl = audioUrlFromResponse(turn);
       if (audioUrl) URL.revokeObjectURL(audioUrl);
       setAudioUrl(nextUrl);
-      setSettings(turn.settings);
+      updateSettings(turn.settings);
       setSpokenSummary(turn.spokenSummary);
       setPlannerPrompt(turn.plannerPrompt ?? null);
       setMessages((current) =>
@@ -1337,7 +1459,11 @@ export function App() {
             >
               <Square size={18} />
             </button>
-            <button className="icon-button" onClick={() => setMuted((value) => !value)} title="Mute">
+            <button
+              className="icon-button"
+              onClick={() => setMuted((value) => !value)}
+              title="Mute"
+            >
               {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
             </button>
             <input
@@ -1374,7 +1500,7 @@ export function App() {
             value={settings.backend}
             onChange={(event) => {
               const backend = event.target.value as AssistantSettings["backend"];
-              setSettings({
+              updateSettings({
                 ...settings,
                 backend,
                 transcriptionMode:
@@ -1401,7 +1527,7 @@ export function App() {
             <select
               value={settings.transcriptionMode}
               onChange={(event) =>
-                setSettings({
+                updateSettings({
                   ...settings,
                   transcriptionMode: event.target.value as AssistantSettings["transcriptionMode"],
                   transcribeModel:
@@ -1426,7 +1552,7 @@ export function App() {
             <select
               value={settings.speechLanguage}
               onChange={(event) =>
-                setSettings({
+                updateSettings({
                   ...settings,
                   speechLanguage: event.target.value
                 })
@@ -1455,7 +1581,7 @@ export function App() {
             <select
               value={settings.codexMode}
               onChange={(event) =>
-                setSettings({
+                updateSettings({
                   ...settings,
                   codexMode: event.target.value as AssistantSettings["codexMode"]
                 })
@@ -1470,7 +1596,7 @@ export function App() {
           Voice
           <select
             value={settings.voice}
-            onChange={(event) => setSettings({ ...settings, voice: event.target.value })}
+            onChange={(event) => updateSettings({ ...settings, voice: event.target.value })}
           >
             <option value="marin">Marin</option>
             <option value="cedar">Cedar</option>
@@ -1486,7 +1612,7 @@ export function App() {
             type="number"
             value={settings.summaryWords}
             onChange={(event) =>
-              setSettings({ ...settings, summaryWords: Number(event.target.value) })
+              updateSettings({ ...settings, summaryWords: Number(event.target.value) })
             }
           />
         </label>
@@ -1495,7 +1621,9 @@ export function App() {
           <input
             placeholder={settings.backend === "openai" ? "gpt-5-mini" : "auto"}
             value={settings.assistantModel}
-            onChange={(event) => setSettings({ ...settings, assistantModel: event.target.value })}
+            onChange={(event) =>
+              updateSettings({ ...settings, assistantModel: event.target.value })
+            }
           />
         </label>
         <label>
@@ -1503,7 +1631,9 @@ export function App() {
           <textarea
             rows={6}
             value={settings.assistantStyle}
-            onChange={(event) => setSettings({ ...settings, assistantStyle: event.target.value })}
+            onChange={(event) =>
+              updateSettings({ ...settings, assistantStyle: event.target.value })
+            }
           />
         </label>
         <div className="future-box">
