@@ -64,6 +64,8 @@ describe("App", () => {
     expect(screen.getByText("Full response")).toBeInTheDocument();
     expect(screen.getByText("Worker Sessions")).toBeInTheDocument();
     expect(screen.getByText("Activity")).toBeInTheDocument();
+    expect(screen.getByText("Voice Commands")).toBeInTheDocument();
+    expect(screen.getByText("focus the latest worker")).toBeInTheDocument();
     expect(screen.getByText("Spoken summary · AI-generated voice")).toBeInTheDocument();
     expect(screen.getByText('Wake on "tensoon"')).toBeInTheDocument();
   });

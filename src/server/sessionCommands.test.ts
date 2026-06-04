@@ -203,6 +203,19 @@ describe("handleSessionCommand", () => {
     expect(recordActivity).toHaveBeenCalledWith(expect.objectContaining({ title: "Mode checked" }));
   });
 
+  it("answers voice command help requests", async () => {
+    const { handleSessionCommand } = await import("./sessionCommands");
+
+    const result = handleSessionCommand("What can I say?", [], settings);
+
+    expect(result?.assistantMessage.content).toContain("focus the latest worker");
+    expect(result?.assistantMessage.content).toContain("switch to plan mode");
+    expect(result?.spokenSummary).toContain("Useful commands");
+    expect(recordActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Voice command help requested" })
+    );
+  });
+
   it("resets the main planning chat by voice", async () => {
     const { handleSessionCommand } = await import("./sessionCommands");
 

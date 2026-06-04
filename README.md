@@ -145,6 +145,9 @@ The same controls are available by voice in Codex mode:
 - `what mode are we in`
 - `start a new chat`
 - `catch me up on the planning session`
+- `what can I say`
+
+The app also shows these command examples in the Settings drawer. The visible command list and the voice help response use the same command catalog.
 
 ## Architecture
 

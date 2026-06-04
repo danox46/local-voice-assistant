@@ -6,6 +6,7 @@ import type {
   ConversationMessage,
   TextTurnResponse
 } from "../shared/types";
+import { commandCatalogSummary } from "../shared/voiceCommandCatalog";
 import { recordActivity } from "./activityFeed";
 import { getPlannerSession, resetPlannerSession } from "./plannerSessionStore";
 import { spokenSummaryFrom } from "./plannerTurn";
@@ -140,6 +141,30 @@ export function handleSessionCommand(
   const original = transcript.trim();
   const clean = cleanTranscript(transcript);
   if (!clean) return undefined;
+
+  if (
+    /\b(help|commands|what can i say|what can you do|voice commands)\b/.test(clean) &&
+    /\b(voice|commands|say|do|help)\b/.test(clean)
+  ) {
+    const answer = [
+      "You can talk normally for planning or brainstorming. For direct cockpit controls, try:",
+      "",
+      commandCatalogSummary(11)
+    ].join("\n");
+    recordActivity({
+      kind: "system",
+      title: "Voice command help requested",
+      detail: "The user asked what voice commands are available.",
+      severity: "info"
+    });
+    return commandResponse({
+      transcript: original,
+      settings,
+      answer,
+      spokenSummary:
+        "You can talk normally for planning. Useful commands include: switch to plan mode, focus the latest worker, inspect the current worker, continue the focused session, and start a new chat."
+    });
+  }
 
   if (
     /\b(new|fresh|reset|clear|start over)\b/.test(clean) &&

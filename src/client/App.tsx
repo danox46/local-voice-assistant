@@ -22,6 +22,7 @@ import type {
   TextTurnResponse,
   VoiceTurnResponse
 } from "../shared/types";
+import { voiceCommandCatalog } from "../shared/voiceCommandCatalog";
 import {
   archiveSession,
   cancelSession,
@@ -1640,6 +1641,18 @@ export function App() {
           <Pause size={18} />
           <p>Wake phrase is local browser speech. Always-listen, Home Assistant, and Codex bridges are reserved as adapters.</p>
         </div>
+        <section className="command-help">
+          <h3>Voice Commands</h3>
+          <div className="command-help-list">
+            {voiceCommandCatalog.map((command) => (
+              <article key={command.phrase}>
+                <span>{command.category}</span>
+                <strong>{command.phrase}</strong>
+                <p>{command.description}</p>
+              </article>
+            ))}
+          </div>
+        </section>
       </aside>
     </main>
   );
