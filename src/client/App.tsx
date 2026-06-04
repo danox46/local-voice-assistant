@@ -333,6 +333,7 @@ export function App() {
   const [audioUrl, setAudioUrl] = useState("");
   const [error, setError] = useState("");
   const [liveTranscript, setLiveTranscript] = useState("");
+  const [lastSubmittedTranscript, setLastSubmittedTranscript] = useState("");
   const [typedPrompt, setTypedPrompt] = useState("");
   const [hasOpenAiKey, setHasOpenAiKey] = useState(false);
   const [hasGeminiCli, setHasGeminiCli] = useState(false);
@@ -371,6 +372,8 @@ export function App() {
   const localSpeechObjectUrlRef = useRef<string | null>(null);
   const mutedRef = useRef(muted);
   const volumeRef = useRef(volume);
+  const liveTranscriptRef = useRef("");
+  const messagesRef = useRef<ConversationMessage[]>([]);
   const uiStateRef = useRef(uiState);
   const wakeEnabledRef = useRef(wakeEnabled);
   const knownSessionStatusesRef = useRef<Map<string, BackgroundSession["status"]>>(new Map());
@@ -425,6 +428,21 @@ export function App() {
     saveTypedDraft(value);
   }
 
+  function updateLiveTranscript(value: string) {
+    liveTranscriptRef.current = value;
+    setLiveTranscript(value);
+  }
+
+  function latestUsableTranscript(stoppedTranscript?: string) {
+    const stopped = stoppedTranscript?.trim() ?? "";
+    const visible = liveTranscriptRef.current.trim();
+    return stopped.length >= visible.length ? stopped : visible;
+  }
+
+  function markSubmittedTranscript(transcript: string) {
+    setLastSubmittedTranscript(transcript);
+  }
+
   function applyTextTurn(turn: TextTurnResponse) {
     updateSettings(turn.settings);
     setSpokenSummary(turn.spokenSummary);
@@ -466,7 +484,7 @@ export function App() {
 
   function useCommandExample(phrase: string) {
     updateTypedPrompt(phrase);
-    setLiveTranscript(phrase);
+    updateLiveTranscript(phrase);
     setSettingsOpen(false);
   }
 
@@ -504,7 +522,7 @@ export function App() {
     if (!shouldArmWakeListener()) return;
     setWakeStatus("heard");
     stopWakeListener();
-    setLiveTranscript(transcript);
+    updateLiveTranscript(transcript);
     clearBrowserPlaybackQueue();
     window.setTimeout(() => {
       if (uiStateRef.current === "idle" || uiStateRef.current === "error") {
@@ -775,6 +793,10 @@ export function App() {
   }, [uiState]);
 
   useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
     wakeEnabledRef.current = wakeEnabled;
   }, [wakeEnabled]);
 
@@ -942,7 +964,8 @@ export function App() {
   async function startRecording() {
     stopWakeListener();
     setError("");
-    setLiveTranscript("");
+    updateLiveTranscript("");
+    setLastSubmittedTranscript("");
     setMicLevel(0);
     setAutoStopRemaining(0);
     stoppingRef.current = false;
@@ -961,7 +984,7 @@ export function App() {
       if (usesBrowserSpeech) {
         recognizerRef.current = new PushToTalkSpeechRecognizer();
         recognizerRef.current.start({
-          onTranscript: setLiveTranscript,
+          onTranscript: updateLiveTranscript,
           onError: setError,
           language: settings.speechLanguage
         });
@@ -991,14 +1014,15 @@ export function App() {
     setAutoStopRemaining(0);
     try {
       if (usesBrowserSpeech) {
-        const transcript = ((await recognizerRef.current?.stop()) ?? liveTranscript).trim();
+        const transcript = latestUsableTranscript(await recognizerRef.current?.stop());
+        markSubmittedTranscript(transcript);
         if (!transcript) {
           throw new Error(
             "I did not catch any words from browser speech recognition. Try Gemini audio transcription in settings, or use the typed fallback below."
           );
         }
         if (isRepeatLastResponseCommand(transcript)) {
-          setLiveTranscript(transcript);
+          updateLiveTranscript(transcript);
           repeatLastResponse();
           return;
         }
@@ -1007,9 +1031,10 @@ export function App() {
           return;
         }
         activeTurnAbortRef.current = new AbortController();
+        markSubmittedTranscript(transcript);
         const turn = await sendTextTurn({
           transcript,
-          history: messages,
+          history: messagesRef.current,
           settings,
           signal: activeTurnAbortRef.current.signal
         });
@@ -1037,7 +1062,7 @@ export function App() {
         activeTurnAbortRef.current = new AbortController();
         const turn = await sendAudioTextTurn({
           audio: recording.blob,
-          history: messages,
+          history: messagesRef.current,
           settings,
           signal: activeTurnAbortRef.current.signal
         });
@@ -1045,6 +1070,7 @@ export function App() {
 
         if (audioUrl) URL.revokeObjectURL(audioUrl);
         setAudioUrl("");
+        markSubmittedTranscript(turn.userMessage.content);
         applyTextTurn(turn);
         void refreshSessions();
 
@@ -1058,13 +1084,14 @@ export function App() {
 
       const turn = await sendVoiceTurn({
         audio: recording.blob,
-        history: messages,
+        history: messagesRef.current,
         settings
       });
 
       const nextUrl = audioUrlFromResponse(turn);
       if (audioUrl) URL.revokeObjectURL(audioUrl);
       setAudioUrl(nextUrl);
+      markSubmittedTranscript(turn.userMessage.content);
       updateSettings(turn.settings);
       setSpokenSummary(turn.spokenSummary);
       setPlannerPrompt(turn.plannerPrompt ?? null);
@@ -1106,7 +1133,8 @@ export function App() {
 
     if (isRepeatLastResponseCommand(transcript)) {
       updateTypedPrompt("");
-      setLiveTranscript(transcript);
+      updateLiveTranscript(transcript);
+      markSubmittedTranscript(transcript);
       repeatLastResponse();
       return;
     }
@@ -1121,15 +1149,16 @@ export function App() {
     setError("");
     try {
       activeTurnAbortRef.current = new AbortController();
+      markSubmittedTranscript(transcript);
       const turn = await sendTextTurn({
         transcript,
-        history: messages,
+        history: messagesRef.current,
         settings,
         signal: activeTurnAbortRef.current.signal
       });
       activeTurnAbortRef.current = null;
       updateTypedPrompt("");
-      setLiveTranscript("");
+      updateLiveTranscript("");
       applyTextTurn(turn);
       void refreshSessions();
 
@@ -1157,7 +1186,8 @@ export function App() {
       });
       activeTurnAbortRef.current = null;
       updateTypedPrompt("");
-      setLiveTranscript(displayTranscript ?? "Retry last turn");
+      updateLiveTranscript(displayTranscript ?? "Retry last turn");
+      markSubmittedTranscript(displayTranscript ?? "Retry last turn");
       applyTextTurn(turn);
       void refreshSessions();
 
@@ -1313,7 +1343,8 @@ export function App() {
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioUrl("");
     updateTypedPrompt("");
-    setLiveTranscript("");
+    updateLiveTranscript("");
+    setLastSubmittedTranscript("");
     setMicLevel(0);
     setAutoStopRemaining(0);
     stoppingRef.current = false;
@@ -1575,6 +1606,11 @@ export function App() {
                 lastUserMessage?.content ||
                 "Your words will appear here after the first turn."}
             </p>
+            {lastSubmittedTranscript ? (
+              <p className="handoff-note">
+                Last sent to backend: <span>{lastSubmittedTranscript}</span>
+              </p>
+            ) : null}
             {settings.backend === "gemini-cli" || settings.backend === "codex-cli" ? (
               <div className="typed-fallback">
                 <label>
@@ -1610,7 +1646,7 @@ export function App() {
                     disabled={!typedPrompt.trim() || isBusy}
                     onClick={() => {
                       updateTypedPrompt("");
-                      setLiveTranscript("");
+                      updateLiveTranscript("");
                     }}
                     type="button"
                   >

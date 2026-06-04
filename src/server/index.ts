@@ -99,6 +99,13 @@ function logServerError(context: string, error: unknown) {
   console.error(`[${new Date().toISOString()}] ${context}\n${message}`);
 }
 
+function logTurnReceived(context: string, transcript: string, settings: AssistantSettings) {
+  const excerpt = transcript.replace(/\s+/g, " ").trim().slice(0, 180);
+  console.log(
+    `[${new Date().toISOString()}] ${context} backend=${settings.backend} codexMode=${settings.codexMode} transcript="${excerpt}"`
+  );
+}
+
 function hasGeminiCli() {
   return fs.existsSync(
     path.join(process.cwd(), "node_modules", "@google", "gemini-cli", "bundle", "gemini.js")
@@ -159,9 +166,18 @@ async function runCodexPlannerTextTurn(
   const plannerHistory = focusedContext
     ? [...getPlannerContextMessages(), focusedContext]
     : getPlannerContextMessages();
-  const result =
-    handleSessionCommand(transcript, plannerHistory, settings) ??
-    (await handlePlannerTurn(transcript, plannerHistory, settings));
+  const commandResult = handleSessionCommand(transcript, plannerHistory, settings);
+  if (commandResult) {
+    console.log(`[${new Date().toISOString()}] text-turn routed=session-command`);
+    const plannerSession = appendPlannerTurn(
+      commandResult.userMessage,
+      commandResult.assistantMessage,
+      commandResult.plannerPrompt
+    );
+    return { ...commandResult, plannerSession };
+  }
+  console.log(`[${new Date().toISOString()}] text-turn routed=planner`);
+  const result = await handlePlannerTurn(transcript, plannerHistory, settings);
   const plannerSession = appendPlannerTurn(
     result.userMessage,
     result.assistantMessage,
@@ -258,9 +274,7 @@ app.post("/api/text-turn", async (req, res) => {
     const textHistory = focusedContext
       ? [...body.history.slice(-23), focusedContext]
       : body.history.slice(-24);
-    console.log(
-      `[${new Date().toISOString()}] text-turn backend=${settings.backend} codexMode=${settings.codexMode}`
-    );
+    logTurnReceived("text-turn", body.transcript, settings);
 
     const result =
       settings.backend === "codex-cli"
