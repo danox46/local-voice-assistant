@@ -21,6 +21,11 @@ export const voiceCommandCatalog: VoiceCommandExample[] = [
     description: "Hear and read a short recap of the saved planning context."
   },
   {
+    category: "planning",
+    phrase: "retry last turn",
+    description: "Remove the latest saved planner turn and run that user request again."
+  },
+  {
     category: "settings",
     phrase: "switch to plan mode",
     description: "Make new Codex workers inspect and plan without editing files."
@@ -72,4 +77,17 @@ export function commandCatalogSummary(limit = 6) {
     .slice(0, limit)
     .map((command) => `${command.phrase}: ${command.description}`)
     .join("\n");
+}
+
+export function isRetryLastTurnCommand(transcript: string) {
+  const clean = transcript
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!clean) return false;
+  return (
+    /\b(retry|redo|rerun|regenerate)\b/.test(clean) &&
+    /\b(last|previous|prior|that|answer|response|turn|message)\b/.test(clean)
+  ) || /\btry (that|it|this) again\b/.test(clean);
 }

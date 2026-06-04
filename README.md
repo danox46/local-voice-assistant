@@ -111,7 +111,7 @@ The browser stores local UI preferences such as backend, Codex plan/execute mode
 
 The typed fallback composer also keeps an unsent local draft across refreshes. Use **Clear draft** to discard it.
 
-Use **Retry last turn** when the latest answer was cut off, awkward, or failed. In Codex mode, the app removes the latest saved user/assistant pair from planner memory before resending the same user request, so the retry is not polluted by the answer you are replacing.
+Use **Retry last turn** or say `retry last turn` when the latest answer was cut off, awkward, or failed. In Codex mode, the app removes the latest saved user/assistant pair from planner memory before resending the same user request, so the retry is not polluted by the answer you are replacing.
 
 `work/` is ignored by Git because it may contain private transcripts, project context, and local execution details.
 
@@ -159,6 +159,7 @@ The same controls are available by voice in Codex mode:
 - `what mode are we in`
 - `start a new chat`
 - `catch me up on the planning session`
+- `retry last turn`
 - `what can I say`
 
 The app also shows these command examples in the Settings drawer. Select any example to fill the typed prompt when speech recognition is not cooperating. The visible command list and the voice help response use the same command catalog.

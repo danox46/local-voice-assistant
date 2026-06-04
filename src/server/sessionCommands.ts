@@ -156,7 +156,7 @@ export function handleSessionCommand(
     const answer = [
       "You can talk normally for planning or brainstorming. For direct cockpit controls, try:",
       "",
-      commandCatalogSummary(12)
+      commandCatalogSummary(13)
     ].join("\n");
     recordActivity({
       kind: "system",
@@ -169,7 +169,7 @@ export function handleSessionCommand(
       settings,
       answer,
       spokenSummary:
-        "You can talk normally for planning. Useful commands include: switch to plan mode, focus the latest worker, inspect the current worker, continue actionable blockers, and start a new chat."
+        "You can talk normally for planning. Useful commands include: retry last turn, switch to plan mode, focus the latest worker, inspect the current worker, continue actionable blockers, and start a new chat."
     });
   }
 

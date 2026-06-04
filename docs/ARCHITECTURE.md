@@ -43,6 +43,7 @@ The Express server owns API keys and local CLI execution. It exposes:
 
 - `GET /api/health`
 - `POST /api/text-turn`
+- `POST /api/text-turn/retry-last`
 - `POST /api/audio-text-turn`
 - `POST /api/voice-turn`
 - `POST /api/cancel-turn`
@@ -74,7 +75,7 @@ Every Codex planner turn also receives a compact operational context built from 
 
 The planner transcript can be exported as markdown through `GET /api/planner-session/export`, and the client toolbar downloads that file as `planner-session.md`.
 
-The retry-last-turn flow calls `POST /api/planner-session/retry-last` before resending the latest user prompt in Codex mode. The server removes the latest user/assistant pair from persisted planner memory, preserving earlier context while replacing the bad or failed answer.
+The retry-last-turn flow calls `POST /api/text-turn/retry-last` for the full rerun, or `POST /api/planner-session/retry-last` when only the saved planner memory needs to be trimmed. The server removes the latest user/assistant pair from persisted planner memory, preserves earlier context, and reruns the previous user request. Transcribed Codex turns that match phrases such as `retry last turn` use the same server-side path.
 
 Planning questions are returned as a `plannerPrompt` payload from `POST /api/text-turn` or `POST /api/audio-text-turn`. The client renders the payload as a planning panel and keeps normal voice/text entry available for answers.
 

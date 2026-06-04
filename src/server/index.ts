@@ -2,7 +2,8 @@ import cors from "cors";
 import express from "express";
 import multer from "multer";
 import { z } from "zod";
-import type { AssistantSettings, ConversationMessage } from "../shared/types";
+import type { AssistantSettings, ConversationMessage, TextTurnResponse } from "../shared/types";
+import { isRetryLastTurnCommand } from "../shared/voiceCommandCatalog";
 import { config, defaultSettings, hasOpenAiKey } from "./config";
 import { createOpenAIClient } from "./openaiClient";
 import {
@@ -144,6 +145,31 @@ function focusedContextMessage(): ConversationMessage | undefined {
   };
 }
 
+async function runCodexPlannerTextTurn(
+  transcript: string,
+  settings: AssistantSettings
+): Promise<TextTurnResponse> {
+  const focusedContext = focusedContextMessage();
+  const plannerHistory = focusedContext
+    ? [...getPlannerContextMessages(), focusedContext]
+    : getPlannerContextMessages();
+  const result =
+    handleSessionCommand(transcript, plannerHistory, settings) ??
+    (await handlePlannerTurn(transcript, plannerHistory, settings));
+  const plannerSession = appendPlannerTurn(result.userMessage, result.assistantMessage);
+  return { ...result, plannerSession };
+}
+
+async function retryLastCodexPlannerTurn(settings: AssistantSettings) {
+  const currentSession = getPlannerSession();
+  const lastUser = [...currentSession.messages].reverse().find((message) => message.role === "user");
+  if (!lastUser?.content.trim()) {
+    throw new Error("There is no previous planner turn to retry yet.");
+  }
+  retryLastPlannerTurn();
+  return runCodexPlannerTextTurn(lastUser.content, settings);
+}
+
 async function withSavedAudioFile<T>(
   file: Express.Multer.File,
   callback: (input: { path: string; filename: string; mimeType: string; buffer: Buffer }) => Promise<T>
@@ -219,9 +245,6 @@ app.post("/api/text-turn", async (req, res) => {
 
     const settings = normalizeSettings(body.settings);
     const focusedContext = focusedContextMessage();
-    const plannerHistory = focusedContext
-      ? [...getPlannerContextMessages(), focusedContext]
-      : getPlannerContextMessages();
     const textHistory = focusedContext
       ? [...body.history.slice(-23), focusedContext]
       : body.history.slice(-24);
@@ -231,20 +254,17 @@ app.post("/api/text-turn", async (req, res) => {
 
     const result =
       settings.backend === "codex-cli"
-        ? handleSessionCommand(body.transcript, plannerHistory, settings) ??
-          (await handlePlannerTurn(body.transcript, plannerHistory, settings))
+        ? isRetryLastTurnCommand(body.transcript)
+          ? await retryLastCodexPlannerTurn(settings)
+          : await runCodexPlannerTextTurn(body.transcript, settings)
         : await handleTextTurn(
             body.transcript,
             textHistory,
             settings,
             createAssistant(settings)
           );
-    const plannerSession =
-      settings.backend === "codex-cli"
-        ? appendPlannerTurn(result.userMessage, result.assistantMessage)
-        : undefined;
     shouldRecordPlannerFailure = false;
-    res.json(plannerSession ? { ...result, plannerSession } : result);
+    res.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Something went wrong.";
     if (shouldRecordPlannerFailure && failedPlannerTranscript.trim()) {
@@ -299,6 +319,44 @@ app.post("/api/planner-session/reset", (_req, res) => {
 
 app.post("/api/planner-session/retry-last", (_req, res) => {
   res.json({ session: retryLastPlannerTurn() });
+});
+
+app.post("/api/text-turn/retry-last", async (req, res) => {
+  try {
+    const bodySchema = z.object({
+      settings: settingsSchema
+    });
+    const body = bodySchema.parse(req.body);
+    const settings = normalizeSettings(body.settings);
+    if (settings.backend !== "codex-cli") {
+      res.status(400).json({
+        error: {
+          code: "retry_requires_codex",
+          message: "Retry last turn is available in Codex planner mode."
+        }
+      });
+      return;
+    }
+    if (!hasCodexCli()) {
+      const error = apiError(
+        "missing_codex_cli",
+        "Codex CLI is not available on PATH. Install it with `npm install -g @openai/codex`, then restart the server.",
+        503
+      );
+      res.status(error.status).json(error.body);
+      return;
+    }
+    res.json(await retryLastCodexPlannerTurn(settings));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Retry failed.";
+    logServerError("retry-last text-turn failed", error);
+    res.status(500).json({
+      error: {
+        code: "retry_last_turn_failed",
+        message
+      }
+    });
+  }
 });
 
 app.post("/api/sessions", (req, res) => {
@@ -432,18 +490,9 @@ app.post("/api/audio-text-turn", upload.single("audio"), async (req, res) => {
         `[${new Date().toISOString()}] transcript chars=${transcript.length}; sending to ${settings.backend}`
       );
       if (settings.backend === "codex-cli") {
-        const focusedContext = focusedContextMessage();
-        const plannerHistory = focusedContext
-          ? [...getPlannerContextMessages(), focusedContext]
-          : getPlannerContextMessages();
-        const plannerResult =
-          handleSessionCommand(transcript, plannerHistory, settings) ??
-          (await handlePlannerTurn(transcript, plannerHistory, settings));
-        const plannerSession = appendPlannerTurn(
-          plannerResult.userMessage,
-          plannerResult.assistantMessage
-        );
-        return { ...plannerResult, plannerSession };
+        return isRetryLastTurnCommand(transcript)
+          ? retryLastCodexPlannerTurn(settings)
+          : runCodexPlannerTextTurn(transcript, settings);
       }
       return handleTextTurn(transcript, parsedHistory.slice(-24), settings, createAssistant(settings));
     });

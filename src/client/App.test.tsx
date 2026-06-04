@@ -58,12 +58,21 @@ describe("App", () => {
       updatedAt: "2026-06-02T00:00:00.000Z",
       messages: []
     });
-    vi.mocked(api.retryLastPlannerTurn).mockResolvedValue({
-      id: "main",
-      title: "Main planning session",
-      createdAt: "2026-06-02T00:00:00.000Z",
-      updatedAt: "2026-06-02T00:01:00.000Z",
-      messages: []
+    vi.mocked(api.retryLastTextTurn).mockResolvedValue({
+      userMessage: {
+        id: "user-retry",
+        role: "user",
+        content: "Retry request.",
+        createdAt: "2026-06-02T00:01:00.000Z"
+      },
+      assistantMessage: {
+        id: "assistant-retry",
+        role: "assistant",
+        content: "Retry answer.",
+        createdAt: "2026-06-02T00:01:30.000Z"
+      },
+      spokenSummary: "Retry answer.",
+      settings
     });
   });
 
@@ -159,7 +168,7 @@ describe("App", () => {
       updatedAt: "2026-06-02T00:00:30.000Z",
       messages: savedMessages
     });
-    vi.mocked(api.sendTextTurn).mockResolvedValueOnce({
+    vi.mocked(api.retryLastTextTurn).mockResolvedValueOnce({
       userMessage: {
         id: "user-2",
         role: "user",
@@ -201,14 +210,26 @@ describe("App", () => {
     await screen.findByText("Old answer.");
     await user.click(screen.getByRole("button", { name: /Retry last turn/ }));
 
-    await waitFor(() => expect(api.retryLastPlannerTurn).toHaveBeenCalled());
-    expect(api.sendTextTurn).toHaveBeenCalledWith(
+    await waitFor(() => expect(api.retryLastTextTurn).toHaveBeenCalled());
+    expect(api.retryLastTextTurn).toHaveBeenCalledWith(
       expect.objectContaining({
-        transcript: "Build the voice cockpit.",
-        history: []
+        settings
       })
     );
+    expect(api.sendTextTurn).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getAllByText("Better answer.").length).toBeGreaterThan(0));
+  });
+
+  it("sends typed retry commands through the retry endpoint", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Ready");
+    await user.type(screen.getAllByLabelText("Type instead")[0], "retry last turn");
+    await user.click(screen.getByRole("button", { name: "Send to Codex" }));
+
+    await waitFor(() => expect(api.retryLastTextTurn).toHaveBeenCalled());
+    expect(api.sendTextTurn).not.toHaveBeenCalled();
   });
 
   it("shows the setup message when Codex CLI is missing", async () => {

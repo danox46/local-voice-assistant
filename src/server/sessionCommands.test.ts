@@ -288,6 +288,7 @@ describe("handleSessionCommand", () => {
 
     expect(result?.assistantMessage.content).toContain("focus the latest worker");
     expect(result?.assistantMessage.content).toContain("switch to plan mode");
+    expect(result?.assistantMessage.content).toContain("retry last turn");
     expect(result?.assistantMessage.content).toContain("continue actionable blockers");
     expect(result?.spokenSummary).toContain("Useful commands");
     expect(recordActivity).toHaveBeenCalledWith(

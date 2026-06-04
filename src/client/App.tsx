@@ -23,7 +23,7 @@ import type {
   TextTurnResponse,
   VoiceTurnResponse
 } from "../shared/types";
-import { voiceCommandCatalog } from "../shared/voiceCommandCatalog";
+import { isRetryLastTurnCommand, voiceCommandCatalog } from "../shared/voiceCommandCatalog";
 import {
   archiveSession,
   cancelSession,
@@ -37,7 +37,7 @@ import {
   listActivity,
   listSessions,
   resetPlannerSession,
-  retryLastPlannerTurn,
+  retryLastTextTurn,
   sendAudioTextTurn,
   sendTextTurn,
   sendVoiceTurn
@@ -817,6 +817,10 @@ export function App() {
             "I did not catch any words from browser speech recognition. Try Gemini audio transcription in settings, or use the typed fallback below."
           );
         }
+        if (settings.backend === "codex-cli" && isRetryLastTurnCommand(transcript)) {
+          await retryLastTurn(transcript);
+          return;
+        }
         activeTurnAbortRef.current = new AbortController();
         const turn = await sendTextTurn({
           transcript,
@@ -915,6 +919,12 @@ export function App() {
     const transcript = typedPrompt.trim();
     if (!transcript) return;
 
+    if (settings.backend === "codex-cli" && isRetryLastTurnCommand(transcript)) {
+      updateTypedPrompt("");
+      await retryLastTurn(transcript);
+      return;
+    }
+
     setUiState("thinking");
     setError("");
     try {
@@ -943,28 +953,19 @@ export function App() {
     }
   }
 
-  async function retryLastTurn() {
-    const transcript = lastUserMessage?.content.trim();
-    if (!transcript) return;
-    const retryHistory = historyWithoutLastTurn(messages);
-
+  async function retryLastTurn(displayTranscript = lastUserMessage?.content.trim()) {
+    if (!displayTranscript && !lastUserMessage) return;
     setUiState("thinking");
     setError("");
     try {
       activeTurnAbortRef.current = new AbortController();
-      if (settings.backend === "codex-cli") {
-        const plannerSession = await retryLastPlannerTurn();
-        setMessages(plannerSession.messages);
-      }
-      const turn = await sendTextTurn({
-        transcript,
-        history: retryHistory,
+      const turn = await retryLastTextTurn({
         settings,
         signal: activeTurnAbortRef.current.signal
       });
       activeTurnAbortRef.current = null;
       updateTypedPrompt("");
-      setLiveTranscript(transcript);
+      setLiveTranscript(displayTranscript ?? "Retry last turn");
       applyTextTurn(turn);
       void refreshSessions();
 

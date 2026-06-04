@@ -64,6 +64,25 @@ export async function retryLastPlannerTurn(): Promise<PlannerSession> {
   return body.session;
 }
 
+export async function retryLastTextTurn(input: {
+  settings: AssistantSettings;
+  signal?: AbortSignal;
+}): Promise<TextTurnResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/text-turn/retry-last`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      settings: input.settings
+    }),
+    signal: input.signal
+  });
+
+  if (!response.ok) throw new Error(await parseApiError(response));
+  return (await response.json()) as TextTurnResponse;
+}
+
 export async function exportPlannerSession(): Promise<Blob> {
   const response = await fetch(`${API_BASE_URL}/api/planner-session/export`);
   if (!response.ok) throw new Error(await parseApiError(response));
