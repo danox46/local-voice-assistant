@@ -2,7 +2,6 @@
   "name": "local-voice-assistant",
   "version": "0.1.0",
   "description": "Local browser voice command center for planning with Codex CLI workers, Gemini CLI, or OpenAI voice APIs.",
-  "private": true,
   "license": "MIT",
   "type": "module",
   "repository": {
