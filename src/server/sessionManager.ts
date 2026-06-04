@@ -33,6 +33,7 @@ const runningSessions = new Map<string, RunningSession>();
 const STALE_SESSION_MS = 1000 * 60 * 8;
 let focusedSessionId: string | null = null;
 let reportsHydrated = false;
+const autoInspectedStaleSessionIds = new Set<string>();
 
 function codexCommand() {
   return process.platform === "win32" ? "codex.cmd" : "codex";
@@ -409,12 +410,31 @@ function finishSession(id: string, patch: Partial<BackgroundSession>) {
   });
 }
 
+function autoInspectStaleSessions(nextSessions: BackgroundSession[]) {
+  for (const session of nextSessions) {
+    if (session.supervision.level !== "stale" || autoInspectedStaleSessionIds.has(session.id)) {
+      continue;
+    }
+    autoInspectedStaleSessionIds.add(session.id);
+    const inspection = inspectBackgroundSession(session.id);
+    if (!inspection?.issueFound) continue;
+    recordActivity({
+      kind: "inspection",
+      title: inspection.userNeeded ? "Stale worker needs user" : "Stale worker issue found",
+      detail: `${session.title}: ${inspection.summary}`,
+      sessionId: session.id,
+      severity: inspection.userNeeded ? "critical" : "warning"
+    });
+  }
+}
+
 export function listBackgroundSessions() {
   hydrateSessionsFromReports();
   const nextSessions = [...sessions.values()].map(withSupervision);
   for (const session of nextSessions) {
     sessions.set(session.id, session);
   }
+  autoInspectStaleSessions(nextSessions);
   return nextSessions.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
@@ -622,4 +642,9 @@ export function resetBackgroundSessionStateForTests() {
   runningSessions.clear();
   focusedSessionId = null;
   reportsHydrated = false;
+  autoInspectedStaleSessionIds.clear();
+}
+
+export function addBackgroundSessionForTests(session: BackgroundSession) {
+  sessions.set(session.id, session);
 }

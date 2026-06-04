@@ -85,6 +85,8 @@ Command responses can return updated `settings`; the client applies those settin
 - User-needed blockers are surfaced and spoken.
 - Technical failures are marked auto-actionable so the agent can continue without asking the user for obvious fixes.
 
+When `GET /api/sessions` refreshes worker state, stale sessions are automatically inspected once. The server records an Activity event only when captured output includes a concrete user-needed or technical issue. Plain silence remains quiet, which keeps polling from turning into noisy false alarms.
+
 The `POST /api/sessions/:id/inspect` endpoint reads captured worker output or final raw output and returns a `SessionInspection`. The client uses it for the worker-card Inspect action. Inspections only speak when a user-needed issue is found; quiet or agent-actionable findings remain visible in the card/history surface.
 
 Worker sessions can also be focused or archived:

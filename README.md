@@ -126,6 +126,8 @@ Background workers include a supervision signal:
 
 Only `needs-user` sessions are treated as interrupt-worthy spoken notifications. Other states stay visible in the worker cards.
 
+Stale sessions are automatically inspected once when the app polls worker status. If captured output contains a concrete failure, the finding is recorded in **Activity**; if the worker is merely quiet, nothing is announced.
+
 Use **Inspect** on a worker card to check captured output before escalating. If no concrete issue is found, the result stays as a quiet page note. If the inspection finds a user-needed blocker, it is read aloud.
 
 Worker cards also support:

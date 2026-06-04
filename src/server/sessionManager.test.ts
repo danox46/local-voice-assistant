@@ -3,7 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { BackgroundSession } from "../shared/types";
+import { listActivityEvents, resetActivityEvents } from "./activityFeed";
 import {
+  addBackgroundSessionForTests,
   classifySessionSupervision,
   listBackgroundSessions,
   resetBackgroundSessionStateForTests
@@ -14,6 +16,7 @@ const originalCwd = process.cwd();
 afterEach(() => {
   process.chdir(originalCwd);
   resetBackgroundSessionStateForTests();
+  resetActivityEvents();
 });
 
 function session(overrides: Partial<BackgroundSession>): BackgroundSession {
@@ -161,5 +164,71 @@ describe("classifySessionSupervision", () => {
       prompt: "Restored from saved worker report."
     });
     expect(sessions[0].report.summary).toContain("inspected the project");
+  });
+});
+
+describe("stale session inspection", () => {
+  it("records one quiet activity item when stale output has a concrete issue", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "voice-stale-session-"));
+    process.chdir(tempDir);
+    resetBackgroundSessionStateForTests();
+
+    addBackgroundSessionForTests(
+      session({
+        id: "stale-issue",
+        title: "Stale issue worker",
+        rawOutput: "Error: TypeScript failed while compiling App.tsx."
+      })
+    );
+
+    const sessions = listBackgroundSessions();
+    const events = listActivityEvents();
+
+    expect(sessions[0].supervision.level).toBe("stale");
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      kind: "inspection",
+      title: "Stale worker issue found",
+      sessionId: "stale-issue",
+      severity: "warning"
+    });
+    expect(events[0].detail).toContain("Stale issue worker");
+  });
+
+  it("does not record activity when stale output has no concrete issue", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "voice-stale-session-"));
+    process.chdir(tempDir);
+    resetBackgroundSessionStateForTests();
+
+    addBackgroundSessionForTests(
+      session({
+        id: "stale-quiet",
+        title: "Quiet worker",
+        rawOutput: "Still analyzing files."
+      })
+    );
+
+    listBackgroundSessions();
+
+    expect(listActivityEvents()).toHaveLength(0);
+  });
+
+  it("does not repeat automatic stale inspection activity on every poll", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "voice-stale-session-"));
+    process.chdir(tempDir);
+    resetBackgroundSessionStateForTests();
+
+    addBackgroundSessionForTests(
+      session({
+        id: "stale-repeat",
+        title: "Repeating stale worker",
+        rawOutput: "Failed to start the dev server."
+      })
+    );
+
+    listBackgroundSessions();
+    listBackgroundSessions();
+
+    expect(listActivityEvents()).toHaveLength(1);
   });
 });
