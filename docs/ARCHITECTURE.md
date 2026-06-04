@@ -47,6 +47,7 @@ The Express server owns API keys and local CLI execution. It exposes:
 - `POST /api/voice-turn`
 - `POST /api/cancel-turn`
 - `GET /api/planner-session`
+- `GET /api/planner-session/export`
 - `POST /api/planner-session/reset`
 - `GET /api/sessions`
 - `GET /api/sessions/:id`
@@ -67,6 +68,8 @@ Codex mode is a command center:
 - the browser continues polling worker state while the main session remains available
 
 Planner conversation is persisted in `work/planner-session.json`, which is intentionally ignored by Git.
+
+The planner transcript can be exported as markdown through `GET /api/planner-session/export`, and the client toolbar downloads that file as `planner-session.md`.
 
 Planning questions are returned as a `plannerPrompt` payload from `POST /api/text-turn` or `POST /api/audio-text-turn`. The client renders the payload as a planning panel and keeps normal voice/text entry available for answers.
 

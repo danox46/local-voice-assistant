@@ -9,6 +9,7 @@ Local Voice Assistant is a local web app for talking to a planning agent, keepin
 - Browser speech recognition with typed fallback.
 - Server-side planner context that survives refreshes and failed turns.
 - Full response history on screen.
+- Markdown export for the main planning transcript.
 - Short spoken summaries with a playback queue to prevent overlapping notifications.
 - Background worker sessions for Codex CLI tasks.
 - Voice-native worker commands for focusing, inspecting, continuing, cancelling, and archiving sessions.

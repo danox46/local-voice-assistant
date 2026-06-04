@@ -42,6 +42,7 @@ describe("App", () => {
     vi.mocked(api.listSessions).mockResolvedValue([]);
     vi.mocked(api.listActivity).mockResolvedValue([]);
     vi.mocked(api.cancelSession).mockResolvedValue({ cancelled: true });
+    vi.mocked(api.exportPlannerSession).mockResolvedValue(new Blob(["# Main planning session"]));
     vi.mocked(api.getPlannerSession).mockResolvedValue({
       id: "main",
       title: "Main planning session",
@@ -85,6 +86,27 @@ describe("App", () => {
     await user.click(screen.getAllByRole("button", { name: "focus the latest worker" })[0]);
 
     expect(screen.getAllByLabelText("Type instead")[0]).toHaveValue("focus the latest worker");
+  });
+
+  it("exports the planner transcript from the toolbar", async () => {
+    const user = userEvent.setup();
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:planner");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+
+    render(<App />);
+
+    await screen.findByText("System Readiness");
+    await user.click(screen.getByRole("button", { name: "Export transcript" }));
+
+    expect(api.exportPlannerSession).toHaveBeenCalled();
+    expect(createObjectURL).toHaveBeenCalled();
+    expect(click).toHaveBeenCalled();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:planner");
+
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+    click.mockRestore();
   });
 
   it("restores and clears the typed prompt draft", async () => {

@@ -55,6 +55,12 @@ export async function resetPlannerSession(): Promise<PlannerSession> {
   return body.session;
 }
 
+export async function exportPlannerSession(): Promise<Blob> {
+  const response = await fetch(`${API_BASE_URL}/api/planner-session/export`);
+  if (!response.ok) throw new Error(await parseApiError(response));
+  return response.blob();
+}
+
 export async function sendVoiceTurn(input: {
   audio: Blob;
   history: ConversationMessage[];

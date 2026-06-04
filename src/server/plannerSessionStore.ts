@@ -81,6 +81,30 @@ export function getPlannerContextMessages() {
   return readSession().messages.slice(-MAX_CONTEXT_MESSAGES);
 }
 
+export function formatPlannerSessionMarkdown(session = readSession()) {
+  const messages = session.messages.length
+    ? session.messages.map((message, index) =>
+        [
+          `## ${index + 1}. ${message.role === "user" ? "User" : "Assistant"}`,
+          "",
+          `Created: ${message.createdAt}`,
+          "",
+          message.content
+        ].join("\n")
+      )
+    : ["_No saved messages yet._"];
+
+  return [
+    `# ${session.title}`,
+    "",
+    `Session: ${session.id}`,
+    `Created: ${session.createdAt}`,
+    `Updated: ${session.updatedAt}`,
+    "",
+    ...messages
+  ].join("\n");
+}
+
 export function appendPlannerTurn(
   userMessage: ConversationMessage,
   assistantMessage: ConversationMessage

@@ -19,6 +19,7 @@ import { handlePlannerTurn } from "./plannerTurn";
 import { handleSessionCommand } from "./sessionCommands";
 import {
   appendPlannerTurn,
+  formatPlannerSessionMarkdown,
   getPlannerContextMessages,
   getPlannerSession,
   recordPlannerFailure,
@@ -282,6 +283,13 @@ app.get("/api/sessions/:id", (req, res) => {
 
 app.get("/api/planner-session", (_req, res) => {
   res.json({ session: getPlannerSession() });
+});
+
+app.get("/api/planner-session/export", (_req, res) => {
+  const markdown = formatPlannerSessionMarkdown();
+  res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+  res.setHeader("Content-Disposition", "attachment; filename=\"planner-session.md\"");
+  res.send(markdown);
 });
 
 app.post("/api/planner-session/reset", (_req, res) => {

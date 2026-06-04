@@ -1,6 +1,7 @@
 import {
   Bot,
   ClipboardList,
+  Download,
   Mic,
   MicOff,
   Pause,
@@ -28,6 +29,7 @@ import {
   cancelSession,
   cancelTurn,
   createSession,
+  exportPlannerSession,
   focusSession,
   getHealth,
   getPlannerSession,
@@ -1088,6 +1090,23 @@ export function App() {
     setUiState("idle");
   }
 
+  async function downloadPlannerTranscript() {
+    try {
+      const blob = await exportPlannerSession();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "planner-session.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setSpokenSummary("Planner transcript exported.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not export planner transcript.");
+    }
+  }
+
   const isBusy = uiState === "thinking" || uiState === "speaking" || uiState === "loading";
   const needsOpenAiKey =
     (settings.backend === "openai" || settings.transcriptionMode === "openai-cloud") &&
@@ -1158,6 +1177,15 @@ export function App() {
             <h1>Plan by voice. Delegate the work.</h1>
           </div>
           <div className="toolbar">
+            <button
+              aria-label="Export transcript"
+              className="icon-button"
+              onClick={() => void downloadPlannerTranscript()}
+              title="Export transcript"
+              type="button"
+            >
+              <Download size={20} />
+            </button>
             <button className="icon-button" onClick={newChat} title="New chat" type="button">
               <RotateCcw size={20} />
             </button>
