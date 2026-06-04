@@ -29,6 +29,8 @@ Settings are initialized from the server defaults and then merged with validated
 
 The visible command examples in Settings and the spoken "what can I say" response both read from `shared/voiceCommandCatalog.ts`, keeping discoverability aligned with the command router. Settings examples are clickable quick-fill prompts for the typed fallback composer.
 
+The typed fallback composer stores its unsent draft in browser `localStorage` and clears it after a successful send, new chat, or explicit Clear draft action.
+
 ## Wake Phrase
 
 The wake phrase is a browser-speech idle listener. When enabled, the client starts a lightweight recognition loop only while the app is idle or in an error-ready state. If it hears `Tensoon` or likely transcript variants, it stops the wake listener and starts the normal recording flow.

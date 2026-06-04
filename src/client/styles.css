@@ -371,6 +371,13 @@ h2 {
   min-height: 86px;
 }
 
+.typed-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
 .text-send-button {
   justify-self: start;
   min-height: 40px;

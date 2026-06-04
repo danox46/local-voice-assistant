@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -27,6 +27,8 @@ const settings = {
 
 describe("App", () => {
   beforeEach(() => {
+    cleanup();
+    window.localStorage.clear();
     vi.mocked(api.getHealth).mockResolvedValue({
       ok: true,
       hasOpenAiKey: true,
@@ -79,6 +81,25 @@ describe("App", () => {
     await user.click(screen.getAllByRole("button", { name: "focus the latest worker" })[0]);
 
     expect(screen.getAllByLabelText("Type instead")[0]).toHaveValue("focus the latest worker");
+  });
+
+  it("restores and clears the typed prompt draft", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      "local-voice-assistant.typed-draft.v1",
+      "Inspect the current worker"
+    );
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(screen.getAllByLabelText("Type instead")[0]).toHaveValue("Inspect the current worker")
+    );
+
+    await user.click(screen.getAllByRole("button", { name: "Clear draft" })[0]);
+
+    expect(screen.getAllByLabelText("Type instead")[0]).toHaveValue("");
+    expect(window.localStorage.getItem("local-voice-assistant.typed-draft.v1")).toBeNull();
   });
 
   it("shows the setup message when Codex CLI is missing", async () => {

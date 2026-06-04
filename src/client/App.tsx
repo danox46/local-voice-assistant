@@ -46,6 +46,7 @@ const AUTO_STOP_AFTER_MS = 3500;
 const WAKE_PHRASE = "tensoon";
 const SETTINGS_STORAGE_KEY = "local-voice-assistant.settings.v1";
 const UI_PREFS_STORAGE_KEY = "local-voice-assistant.ui-prefs.v1";
+const TYPED_DRAFT_STORAGE_KEY = "local-voice-assistant.typed-draft.v1";
 
 const fallbackSettings: AssistantSettings = {
   backend: "codex-cli",
@@ -164,6 +165,26 @@ function saveStoredUiPrefs(prefs: UiPrefs) {
     window.localStorage.setItem(UI_PREFS_STORAGE_KEY, JSON.stringify(prefs));
   } catch {
     // Best effort only; the app remains usable without persistence.
+  }
+}
+
+function loadTypedDraft() {
+  try {
+    return window.localStorage.getItem(TYPED_DRAFT_STORAGE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function saveTypedDraft(value: string) {
+  try {
+    if (value.trim()) {
+      window.localStorage.setItem(TYPED_DRAFT_STORAGE_KEY, value);
+    } else {
+      window.localStorage.removeItem(TYPED_DRAFT_STORAGE_KEY);
+    }
+  } catch {
+    // Draft persistence is a convenience, not a requirement.
   }
 }
 
@@ -355,6 +376,11 @@ export function App() {
     saveStoredSettings(nextSettings);
   }
 
+  function updateTypedPrompt(value: string) {
+    setTypedPrompt(value);
+    saveTypedDraft(value);
+  }
+
   function applyTextTurn(turn: TextTurnResponse) {
     updateSettings(turn.settings);
     setSpokenSummary(turn.spokenSummary);
@@ -367,12 +393,14 @@ export function App() {
   function answerPlannerQuestion(question: string) {
     setTypedPrompt((current) => {
       const prefix = `Answering: ${question}`;
-      return current.trim() ? `${current.trim()}\n${prefix}\n` : `${prefix}\n`;
+      const next = current.trim() ? `${current.trim()}\n${prefix}\n` : `${prefix}\n`;
+      saveTypedDraft(next);
+      return next;
     });
   }
 
   function useCommandExample(phrase: string) {
-    setTypedPrompt(phrase);
+    updateTypedPrompt(phrase);
     setLiveTranscript(phrase);
     setSettingsOpen(false);
   }
@@ -592,8 +620,9 @@ export function App() {
       const storedPrefs = loadStoredUiPrefs();
       setSettings(storedSettings);
       setMuted(storedPrefs.muted);
-      setVolume(storedPrefs.volume);
-      setWakeEnabled(storedPrefs.wakeEnabled);
+        setVolume(storedPrefs.volume);
+        setWakeEnabled(storedPrefs.wakeEnabled);
+        setTypedPrompt(loadTypedDraft());
         setHasOpenAiKey(health.hasOpenAiKey);
         setHasGeminiCli(health.hasGeminiCli);
         setHasCodexCli(health.hasCodexCli);
@@ -879,7 +908,7 @@ export function App() {
         signal: activeTurnAbortRef.current.signal
       });
       activeTurnAbortRef.current = null;
-      setTypedPrompt("");
+      updateTypedPrompt("");
       setLiveTranscript("");
       applyTextTurn(turn);
       void refreshSessions();
@@ -1042,6 +1071,7 @@ export function App() {
     setSpokenSummary("");
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioUrl("");
+    updateTypedPrompt("");
     setLiveTranscript("");
     setMicLevel(0);
     setAutoStopRemaining(0);
@@ -1228,7 +1258,7 @@ export function App() {
                 <label>
                   Type instead
                   <textarea
-                    onChange={(event) => setTypedPrompt(event.target.value)}
+                    onChange={(event) => updateTypedPrompt(event.target.value)}
                     onKeyDown={(event) => {
                       if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
                         event.preventDefault();
@@ -1244,14 +1274,27 @@ export function App() {
                     value={typedPrompt}
                   />
                 </label>
-                <button
-                  className="text-send-button"
-                  disabled={!typedPrompt.trim() || isBusy}
-                  onClick={() => void sendTypedPrompt()}
-                  type="button"
-                >
-                  {settings.backend === "codex-cli" ? "Send to Codex" : "Send text"}
-                </button>
+                <div className="typed-actions">
+                  <button
+                    className="text-send-button"
+                    disabled={!typedPrompt.trim() || isBusy}
+                    onClick={() => void sendTypedPrompt()}
+                    type="button"
+                  >
+                    {settings.backend === "codex-cli" ? "Send to Codex" : "Send text"}
+                  </button>
+                  <button
+                    className="small-button"
+                    disabled={!typedPrompt.trim() || isBusy}
+                    onClick={() => {
+                      updateTypedPrompt("");
+                      setLiveTranscript("");
+                    }}
+                    type="button"
+                  >
+                    Clear draft
+                  </button>
+                </div>
               </div>
             ) : null}
           </section>

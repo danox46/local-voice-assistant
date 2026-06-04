@@ -103,6 +103,8 @@ Completed, blocked, failed, and cancelled worker cards are restored from saved r
 
 The browser stores local UI preferences such as backend, Codex plan/execute mode, transcription mode, assistant style, wake phrase, mute, and volume. Server defaults from `.env` are used first, then valid browser preferences are applied on top.
 
+The typed fallback composer also keeps an unsent local draft across refreshes. Use **Clear draft** to discard it.
+
 `work/` is ignored by Git because it may contain private transcripts, project context, and local execution details.
 
 ## Wake Phrase
